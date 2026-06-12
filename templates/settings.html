@@ -5,9 +5,10 @@
 <title>Settings — NotaryPro</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{--navy:#1A237E;--gold:#D4AF37;--bg:#f8f9fa;--card:#fff;--text:#333;--muted:#666;--green:#4CAF50;--border:#e0e0e0}
+:root{--navy:#1A237E;--gold:#D4AF37;--bg:#f8f9fa;--card:#fff;--text:#333;--muted:#666;--green:#4CAF50;--red:#f44336;--blue:#2196F3;--border:#e0e0e0}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+a{color:var(--navy);text-decoration:none}
 .layout{display:flex;min-height:100vh}
 .sidebar{width:240px;background:var(--navy);color:#fff;padding:24px 0;flex-shrink:0;position:fixed;height:100vh;overflow-y:auto}
 .sidebar h2{padding:0 20px 20px;font-size:1.2rem;border-bottom:1px solid rgba(255,255,255,0.1)}
@@ -15,21 +16,36 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-
 .sidebar nav a:hover,.sidebar nav a.active{background:rgba(255,255,255,0.1);color:#fff;text-decoration:none}
 .sidebar nav a .icon{margin-right:8px}
 .sidebar .logout{margin-top:40px;border-top:1px solid rgba(255,255,255,0.1);padding-top:20px}
-.main{flex:1;margin-left:240px;padding:32px;max-width:700px}
+.main{flex:1;margin-left:240px;padding:32px;max-width:800px}
 .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
 .header h1{font-size:1.3rem;color:var(--navy)}
 .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:20px}
-.card h3{font-size:1rem;margin-bottom:16px;color:var(--navy)}
+.card h3{font-size:1rem;margin-bottom:16px;color:var(--navy);display:flex;align-items:center;gap:8px}
+.card h3 .icon{font-size:1.2rem}
 .btn{display:inline-block;padding:10px 20px;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;border:none;font-family:'Inter',sans-serif}
 .btn-primary{background:var(--navy);color:#fff}
 .btn-success{background:var(--green);color:#fff}
+.btn-danger{background:var(--red);color:#fff}
+.btn-sm{padding:6px 12px;font-size:0.8rem}
 .form-group{margin-bottom:16px}
 .form-group label{display:block;font-size:0.85rem;font-weight:600;margin-bottom:6px}
-.form-group input{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:0.9rem;font-family:'Inter',sans-serif;outline:none}
-.form-group input:focus{border-color:var(--navy)}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:0.9rem;font-family:'Inter',sans-serif;outline:none;background:#fff}
+.form-group input:focus,.form-group select:focus{border-color:var(--navy);box-shadow:0 0 0 3px rgba(26,35,126,0.1)}
+.form-group .hint{font-size:0.75rem;color:var(--muted);margin-top:4px}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.flash{padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:0.9rem;background:#E8F5E9;color:#2E7D32;border:1px solid #C8E6C9}
-@media(max-width:768px){.sidebar{display:none}.main{margin-left:0;padding:16px}.form-row{grid-template-columns:1fr}}
+.form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.flash{padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:0.9rem}
+.flash-success{background:#E8F5E9;color:#2E7D32;border:1px solid #C8E6C9}
+.flash-error{background:#FFEBEE;color:#C62828;border:1px solid #FFCDD2}
+.tabs{display:flex;gap:4px;margin-bottom:24px;border-bottom:2px solid var(--border);padding-bottom:0}
+.tab{padding:10px 20px;font-size:0.9rem;font-weight:600;color:var(--muted);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-2px;font-family:'Inter',sans-serif}
+.tab.active{color:var(--navy);border-bottom-color:var(--navy)}
+.tab:hover{color:var(--navy)}
+.tab-content{display:none}
+.tab-content.active{display:block}
+.preview-box{background:#f8f9fa;border:1px solid var(--border);border-radius:8px;padding:16px;font-size:0.85rem}
+.preview-box .label{font-weight:600;color:var(--navy);margin-bottom:4px}
+@media(max-width:768px){.sidebar{display:none}.main{margin-left:0;padding:16px}.form-row,.form-row-3{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -45,69 +61,219 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-
 </div>
 <div class="main">
   <div class="header"><h1>⚙️ Settings</h1></div>
-  {% with messages = get_flashed_messages() %}
-    {% for msg in messages %}<div class="flash">{{ msg }}</div>{% endfor %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+    <div class="flash flash-{{ category }}">{{ message }}</div>
+    {% endfor %}
   {% endwith %}
-  <form method="POST">
-    <div class="card">
-      <h3>Notary Information</h3>
-      <div class="form-group">
-        <label>Full Legal Name (as on commission)</label>
-        <input type="text" name="name" value="{{ config.name }}" placeholder="Jane Doe">
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('notary')">🏛️ Notary Profile</button>
+    <button class="tab" onclick="switchTab('business')">💼 Business</button>
+    <button class="tab" onclick="switchTab('pricing')">💰 Pricing</button>
+    <button class="tab" onclick="switchTab('account')">🔐 Account</button>
+  </div>
+
+  <form method="POST" id="settingsForm">
+    <!-- Notary Profile Tab -->
+    <div class="tab-content active" id="tab-notary">
+      <div class="card">
+        <h3><span class="icon">🏛️</span> Notary Commission Information</h3>
+        <p style="color:var(--muted);font-size:0.85rem;margin-bottom:16px">This information appears on all notarized documents and the notary seal. Must match your NC commission exactly.</p>
+        <div class="form-group">
+          <label>Full Legal Name (as on commission) *</label>
+          <input type="text" name="name" value="{{ config.name }}" placeholder="e.g., Jane Doe" required>
+          <div class="hint">Must match exactly what's on your NC notary commission</div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Commission Number *</label>
+            <input type="text" name="commission_number" value="{{ config.commission_number }}" placeholder="e.g., 2024-123456" required>
+          </div>
+          <div class="form-group">
+            <label>Commission Expiration Date *</label>
+            <input type="text" name="commission_expires" value="{{ config.commission_expires }}" placeholder="e.g., 12/31/2028" required>
+            <div class="hint">Format: MM/DD/YYYY</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>County of Commission *</label>
+            <input type="text" name="county" value="{{ config.county }}" placeholder="e.g., Randolph" required>
+          </div>
+          <div class="form-group">
+            <label>State</label>
+            <input type="text" name="state" value="{{ config.state|default('North Carolina') }}" placeholder="North Carolina">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Commission Type</label>
+            <select name="commission_type">
+              <option value="traditional" {{ 'selected' if config.get('commission_type') == 'traditional' }}>Traditional Notary</option>
+              <option value="enotary" {{ 'selected' if config.get('commission_type') == 'enotary' }}>eNotary (RON Enabled)</option>
+            </select>
+            <div class="hint">Do you have RON (Remote Online Notarization) endorsement?</div>
+          </div>
+          <div class="form-group">
+            <label>Surety Bond Amount</label>
+            <input type="text" name="bond_amount" value="{{ config.get('bond_amount', '$10,000') }}" placeholder="$10,000">
+          </div>
+        </div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Commission Number</label>
-          <input type="text" name="commission_number" value="{{ config.commission_number }}" placeholder="123456">
-        </div>
-        <div class="form-group">
-          <label>Commission Expiration</label>
-          <input type="text" name="commission_expires" value="{{ config.commission_expires }}" placeholder="MM/DD/YYYY">
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>County</label>
-          <input type="text" name="county" value="{{ config.county }}" placeholder="Randolph">
-        </div>
-        <div class="form-group">
-          <label>State</label>
-          <input type="text" name="state" value="{{ config.state }}" placeholder="North Carolina">
+
+      <div class="card">
+        <h3><span class="icon">📜</span> Notary Seal Preview</h3>
+        <div class="preview-box">
+          <div class="label">Official Notary Seal</div>
+          <div style="border:2px solid var(--navy);border-radius:8px;padding:16px;text-align:center;background:#F5F5FA;margin-top:8px">
+            <div style="font-weight:700;font-size:1.1rem;color:var(--navy)">{{ config.name or '[Notary Name]' }}</div>
+            <div style="font-size:0.85rem">Notary Public — {{ config.county or '[County]' }} County, {{ config.state|default('North Carolina') }}</div>
+            <div style="font-size:0.8rem;color:var(--muted)">Commission #{{ config.commission_number or '[Number]' }} | Expires {{ config.commission_expires or '[Date]' }}</div>
+          </div>
         </div>
       </div>
     </div>
-    <div class="card">
-      <h3>Business Information</h3>
-      <div class="form-group">
-        <label>Business Name</label>
-        <input type="text" name="business_name" value="{{ config.business_name }}" placeholder="Jane Doe Notary Services">
-      </div>
-      <div class="form-row">
+
+    <!-- Business Tab -->
+    <div class="tab-content" id="tab-business">
+      <div class="card">
+        <h3><span class="icon">💼</span> Business Information</h3>
         <div class="form-group">
-          <label>Business Email</label>
-          <input type="email" name="business_email" value="{{ config.business_email }}" placeholder="jane@notary.com">
+          <label>Business / DBA Name</label>
+          <input type="text" name="business_name" value="{{ config.business_name }}" placeholder="e.g., Jane Doe Notary Services, LLC">
+          <div class="hint">Leave blank to use your personal name</div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Business Email</label>
+            <input type="email" name="business_email" value="{{ config.business_email }}" placeholder="e.g., jane@notary.com">
+          </div>
+          <div class="form-group">
+            <label>Business Phone</label>
+            <input type="tel" name="business_phone" value="{{ config.business_phone }}" placeholder="e.g., (336) 555-1234">
+          </div>
         </div>
         <div class="form-group">
-          <label>Business Phone</label>
-          <input type="tel" name="business_phone" value="{{ config.business_phone }}" placeholder="(336) 555-1234">
+          <label>Business Address</label>
+          <input type="text" name="business_address" value="{{ config.get('business_address', '') }}" placeholder="e.g., 123 Main St, Liberty, NC 27298">
+        </div>
+        <div class="form-group">
+          <label>Website URL</label>
+          <input type="url" name="website" value="{{ config.get('website', '') }}" placeholder="e.g., https://janedoe.notary.com">
+        </div>
+      </div>
+
+      <div class="card">
+        <h3><span class="icon">🎨</span> Branding</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Primary Color</label>
+            <input type="color" name="brand_color" value="{{ config.get('brand_color', '#1A237E') }}" style="width:60px;height:40px;padding:2px;cursor:pointer">
+          </div>
+          <div class="form-group">
+            <label>Accent Color</label>
+            <input type="color" name="accent_color" value="{{ config.get('accent_color', '#D4AF37') }}" style="width:60px;height:40px;padding:2px;cursor:pointer">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Logo URL</label>
+          <input type="url" name="logo_url" value="{{ config.get('logo_url', '') }}" placeholder="https://example.com/logo.png">
+          <div class="hint">Upload your logo and paste the URL here</div>
         </div>
       </div>
     </div>
-    <div class="card">
-      <h3>Pricing</h3>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Fee Per Signature ($)</label>
-          <input type="number" name="fee_per_signature" value="{{ config.fee_per_signature }}" step="0.01" min="0">
+
+    <!-- Pricing Tab -->
+    <div class="tab-content" id="tab-pricing">
+      <div class="card">
+        <h3><span class="icon">💰</span> Pricing Configuration</h3>
+        <p style="color:var(--muted);font-size:0.85rem;margin-bottom:16px">Set your notarization fees. These are displayed on the landing page and used for revenue tracking.</p>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>Single Signature ($)</label>
+            <input type="number" name="fee_per_signature" value="{{ config.fee_per_signature|default(25) }}" step="0.01" min="0">
+          </div>
+          <div class="form-group">
+            <label>Multi-Signature ($)</label>
+            <input type="number" name="fee_multi_signature" value="{{ config.fee_multi_signature|default(10) }}" step="0.01" min="0">
+            <div class="hint">Per additional signer</div>
+          </div>
+          <div class="form-group">
+            <label>Max Signers</label>
+            <input type="number" name="max_signers" value="{{ config.get('max_signers', 10) }}" min="1" max="50">
+          </div>
         </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Loan Package Fee ($)</label>
+            <input type="number" name="fee_loan_package" value="{{ config.get('fee_loan_package', 100) }}" step="0.01" min="0">
+          </div>
+          <div class="form-group">
+            <label>Travel Fee ($)</label>
+            <input type="number" name="fee_travel" value="{{ config.get('fee_travel', 0) }}" step="0.01" min="0">
+            <div class="hint">For in-person notarizations</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3><span class="icon">💳</span> Payment Settings</h3>
         <div class="form-group">
-          <label>Multi-Signature Fee ($)</label>
-          <input type="number" name="fee_multi_signature" value="{{ config.fee_multi_signature }}" step="0.01" min="0">
+          <label>Stripe Account ID</label>
+          <input type="text" name="stripe_account_id" value="{{ config.get('stripe_account_id', '') }}" placeholder="acct_xxxxxxxxxxxxx">
+          <div class="hint">Connect your Stripe account to accept payments. Payments go directly to you.</div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Payment Model</label>
+            <select name="payment_model">
+              <option value="direct" {{ 'selected' if config.get('payment_model') == 'direct' }}>Direct (100% to notary)</option>
+              <option value="platform" {{ 'selected' if config.get('payment_model') == 'platform' }}>Platform (you take a %)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Platform Commission (%)</label>
+            <input type="number" name="platform_commission" value="{{ config.get('platform_commission', 10) }}" step="0.5" min="0" max="50">
+            <div class="hint">Your cut per transaction</div>
+          </div>
         </div>
       </div>
     </div>
-    <button type="submit" class="btn btn-success" style="width:100%;padding:14px;font-size:1rem">💾 Save Settings</button>
+
+    <!-- Account Tab -->
+    <div class="tab-content" id="tab-account">
+      <div class="card">
+        <h3><span class="icon">🔐</span> Account Security</h3>
+        <div class="form-group">
+          <label>Change Password</label>
+          <input type="password" name="new_password" placeholder="Enter new password">
+          <div class="hint">Leave blank to keep current password</div>
+        </div>
+      </div>
+      <div class="card">
+        <h3><span class="icon">📤</span> Export Data</h3>
+        <p style="color:var(--muted);font-size:0.85rem;margin-bottom:16px">Download all your journal entries and session data.</p>
+        <a href="/api/journal" class="btn btn-primary" download>📥 Download Journal (JSON)</a>
+      </div>
+      <div class="card" style="border-color:var(--red)">
+        <h3 style="color:var(--red)"><span class="icon">⚠️</span> Danger Zone</h3>
+        <p style="color:var(--muted);font-size:0.85rem;margin-bottom:16px">This will permanently delete all sessions, signatures, and journal entries.</p>
+        <button type="button" class="btn btn-danger" onclick="if(confirm('Are you sure? This cannot be undone.')) alert('Contact support to reset all data.')">🗑 Reset All Data</button>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-success" style="width:100%;padding:14px;font-size:1rem;margin-top:16px">💾 Save All Settings</button>
   </form>
 </div>
+
+<script>
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelector(`[onclick="switchTab('${tab}')"]`).classList.add('active');
+  document.getElementById('tab-' + tab).classList.add('active');
+}
+</script>
 </body>
 </html>

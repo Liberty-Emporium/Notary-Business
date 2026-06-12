@@ -63,12 +63,24 @@ def load_notary_config():
         'commission_expires': '',
         'county': '',
         'state': 'North Carolina',
+        'commission_type': 'traditional',
+        'bond_amount': '$10,000',
         'fee_per_signature': 25,
         'fee_multi_signature': 10,
+        'fee_loan_package': 100,
+        'fee_travel': 0,
+        'max_signers': 10,
         'stripe_account_id': '',
+        'payment_model': 'direct',
+        'platform_commission': 10,
         'business_name': '',
         'business_email': '',
         'business_phone': '',
+        'business_address': '',
+        'website': '',
+        'brand_color': '#1A237E',
+        'accent_color': '#D4AF37',
+        'logo_url': '',
     }
 
 def save_notary_config(config):
@@ -330,14 +342,22 @@ def settings():
             if key in request.form:
                 config[key] = request.form[key]
         # Handle numeric fields
-        for key in ['fee_per_signature', 'fee_multi_signature']:
+        for key in ['fee_per_signature', 'fee_multi_signature', 'fee_loan_package', 'fee_travel', 'platform_commission']:
             if key in request.form:
                 try:
                     config[key] = float(request.form[key])
                 except ValueError:
                     pass
+        if 'max_signers' in request.form:
+            try:
+                config['max_signers'] = int(request.form['max_signers'])
+            except ValueError:
+                pass
+        # Handle password change
+        if request.form.get('new_password'):
+            os.environ['ADMIN_PASSWORD'] = request.form['new_password']
         save_notary_config(config)
-        flash('Settings saved!')
+        flash('Settings saved successfully!', 'success')
         return redirect(url_for('settings'))
     return render_template('settings.html', config=config)
 
