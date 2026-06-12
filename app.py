@@ -2,6 +2,7 @@
 """
 NotaryPro — Remote Online Notary Platform
 NC RON (Remote Online Notarization) Compliant
+Single-tenant: one app instance per notary
 """
 
 import os
@@ -11,6 +12,7 @@ import uuid
 import base64
 import hashlib
 import secrets
+import sqlite3
 import datetime
 from functools import wraps
 
@@ -25,14 +27,12 @@ from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
                                   TableStyle, HRFlowable, PageBreak, Image as RLImage)
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
-from reportlab.graphics.shapes import Drawing, Rect, String
-from reportlab.graphics import renderPDF
 
-# ── App Config ──────────────────────────────────────────────────────────────
+# ─── App Config ─────────────────────────────────────────────────────────────
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
-app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(days=7)
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
+app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(days=30)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
 # Stripe
 stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', '')
@@ -46,83 +46,170 @@ os.makedirs(APP_DATA, exist_ok=True)
 SESSIONS_DIR = os.path.join(APP_DATA, 'sessions')
 DOCS_DIR = os.path.join(APP_DATA, 'documents')
 SIGS_DIR = os.path.join(APP_DATA, 'signatures')
+ID_DIR = os.path.join(APP_DATA, 'id_uploads')
 os.makedirs(SESSIONS_DIR, exist_ok=True)
 os.makedirs(DOCS_DIR, exist_ok=True)
 os.makedirs(SIGS_DIR, exist_ok=True)
+os.makedirs(ID_DIR, exist_ok=True)
 
-# ── Notary Config (filled by admin) ─────────────────────────────────────────
-NOTARY_CONFIG_FILE = os.path.join(APP_DATA, 'notary_config.json')
+# Database
+DB_PATH = os.path.join(APP_DATA, 'notary.db')
 
-def load_notary_config():
-    if os.path.exists(NOTARY_CONFIG_FILE):
-        with open(NOTARY_CONFIG_FILE) as f:
-            return json.load(f)
-    return {
-        'name': '',
-        'commission_number': '',
-        'commission_expires': '',
-        'county': '',
-        'state': 'North Carolina',
-        'commission_type': 'traditional',
-        'bond_amount': '$10,000',
-        'fee_per_signature': 25,
-        'fee_multi_signature': 10,
-        'fee_loan_package': 100,
-        'fee_travel': 0,
-        'max_signers': 10,
-        'stripe_account_id': '',
-        'payment_model': 'direct',
-        'platform_commission': 10,
-        'business_name': '',
-        'business_email': '',
-        'business_phone': '',
-        'business_address': '',
-        'website': '',
-        'brand_color': '#1A237E',
-        'accent_color': '#D4AF37',
-        'logo_url': '',
-    }
+# ─── Database ────────────────────────────────────────────────────────────────
 
-def save_notary_config(config):
-    with open(NOTARY_CONFIG_FILE, 'w') as f:
-        json.dump(config, f, indent=2)
+def get_db():
+    db = sqlite3.connect(DB_PATH)
+    db.row_factory = sqlite3.Row
+    return db
 
-# ── Database helpers ────────────────────────────────────────────────────────
-JOURNAL_FILE = os.path.join(APP_DATA, 'journal.json')
+def init_db():
+    db = get_db()
+    db.executescript('''
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            full_name TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            is_admin INTEGER DEFAULT 0
+        );
 
-def load_journal():
-    if os.path.exists(JOURNAL_FILE):
-        with open(JOURNAL_FILE) as f:
-            return json.load(f)
-    return []
+        CREATE TABLE IF NOT EXISTS notary_profile (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            commission_number TEXT,
+            commission_expires TEXT,
+            county TEXT,
+            state TEXT DEFAULT 'North Carolina',
+            commission_type TEXT DEFAULT 'traditional',
+            bond_amount TEXT DEFAULT '$10,000',
+            business_name TEXT,
+            business_email TEXT,
+            business_phone TEXT,
+            business_address TEXT,
+            website TEXT,
+            brand_color TEXT DEFAULT '#1A237E',
+            accent_color TEXT DEFAULT '#D4AF37',
+            logo_url TEXT,
+            fee_per_signature REAL DEFAULT 25,
+            fee_multi_signature REAL DEFAULT 10,
+            fee_loan_package REAL DEFAULT 100,
+            fee_travel REAL DEFAULT 0,
+            max_signers INTEGER DEFAULT 10,
+            stripe_account_id TEXT,
+            payment_model TEXT DEFAULT 'direct',
+            platform_commission REAL DEFAULT 10,
+            updated_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
 
-def save_journal(entries):
-    with open(JOURNAL_FILE, 'w') as f:
-        json.dump(entries, f, indent=2)
+        CREATE TABLE IF NOT EXISTS sessions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            signer_name TEXT,
+            signer_email TEXT,
+            document_type TEXT,
+            num_signatures INTEGER DEFAULT 1,
+            notes TEXT,
+            status TEXT DEFAULT 'preparing',
+            id_verified INTEGER DEFAULT 0,
+            id_upload_path TEXT,
+            kba_passed INTEGER DEFAULT 0,
+            video_recorded INTEGER DEFAULT 0,
+            video_path TEXT,
+            payment_status TEXT DEFAULT 'pending',
+            payment_amount REAL DEFAULT 0,
+            document_path TEXT,
+            document_name TEXT,
+            final_pdf TEXT,
+            created_at TEXT NOT NULL,
+            completed_at TEXT,
+            expires_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
 
-def add_journal_entry(entry):
-    journal = load_journal()
-    entry['id'] = str(uuid.uuid4())[:8]
-    entry['timestamp'] = datetime.datetime.utcnow().isoformat()
-    journal.append(entry)
-    save_journal(journal)
-    return entry
+        CREATE TABLE IF NOT EXISTS signatures (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            signer_name TEXT NOT NULL,
+            signature_path TEXT NOT NULL,
+            signed_date TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES sessions(id)
+        );
 
-# ── Session helpers ─────────────────────────────────────────────────────────
-def save_session_data(sid, data):
-    path = os.path.join(SESSIONS_DIR, f'{sid}.json')
-    with open(path, 'w') as f:
-        json.dump(data, f, indent=2)
+        CREATE TABLE IF NOT EXISTS journal (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            signer_name TEXT,
+            document_type TEXT,
+            num_signatures INTEGER DEFAULT 1,
+            fee REAL DEFAULT 0,
+            status TEXT DEFAULT 'completed',
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (session_id) REFERENCES sessions(id)
+        );
 
-def load_session_data(sid):
-    path = os.path.join(SESSIONS_DIR, f'{sid}.json')
-    if os.path.exists(path):
-        with open(path) as f:
-            return json.load(f)
-    return None
+        CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+        CREATE INDEX IF NOT EXISTS idx_journal_user ON journal(user_id);
+        CREATE INDEX IF NOT EXISTS idx_signatures_session ON signatures(session_id);
+    ''')
+    db.commit()
+    db.close()
+
+init_db()
+
+# ─── Helpers ─────────────────────────────────────────────────────────────────
+
+def hash_password(pw):
+    salt = secrets.token_hex(16)
+    pw_hash = hashlib.sha256((pw + salt).encode()).hexdigest()
+    return f"{salt}${pw_hash}"
+
+def verify_password(pw, stored):
+    if '$' not in stored:
+        return False
+    salt, pw_hash = stored.split('$', 1)
+    return hashlib.sha256((pw + salt).encode()).hexdigest() == pw_hash
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('user_id'):
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated
+
+def get_user():
+    if not session.get('user_id'):
+        return None
+    db = get_db()
+    user = db.execute('SELECT * FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+    db.close()
+    return user
+
+def get_profile():
+    if not session.get('user_id'):
+        return None
+    db = get_db()
+    p = db.execute('SELECT * FROM notary_profile WHERE user_id = ?', (session['user_id'],)).fetchone()
+    db.close()
+    if not p:
+        # Create default profile
+        pid = str(uuid.uuid4())[:12]
+        db = get_db()
+        db.execute('INSERT INTO notary_profile (id, user_id, state) VALUES (?, ?, ?)',
+                   (pid, session['user_id'], 'North Carolina'))
+        db.commit()
+        p = db.execute('SELECT * FROM notary_profile WHERE id = ?', (pid,)).fetchone()
+        db.close()
+    return dict(p) if p else {}
 
 def save_signature_image(data_url, session_id, signer_name):
-    """Save a base64 signature image to disk."""
     header, encoded = data_url.split(',', 1)
     img_data = base64.b64decode(encoded)
     ext = 'png'
@@ -134,249 +221,11 @@ def save_signature_image(data_url, session_id, signer_name):
         f.write(img_data)
     return sig_path
 
-def save_document(file_bytes, session_id, filename):
-    """Save uploaded document."""
-    safe_name = filename.replace(' ', '_').replace('/', '_')
-    doc_name = f"{session_id}_{safe_name}"
-    doc_path = os.path.join(DOCS_DIR, doc_name)
-    with open(doc_path, 'wb') as f:
+def save_id_image(file_bytes, session_id):
+    id_path = os.path.join(ID_DIR, f"{session_id}_id.jpg")
+    with open(id_path, 'wb') as f:
         f.write(file_bytes)
-    return doc_path, doc_name
-
-# ── Decorators ──────────────────────────────────────────────────────────────
-def login_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not session.get('authenticated'):
-            return redirect(url_for('login'))
-        return f(*args, **kwargs)
-    return decorated
-
-# ── Routes: Public ──────────────────────────────────────────────────────────
-
-@app.route('/')
-def index():
-    config = load_notary_config()
-    return render_template('index.html', config=config)
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    error = None
-    if request.method == 'POST':
-        pw = request.form.get('password', '')
-        stored = os.environ.get('ADMIN_PASSWORD', 'notary2025')
-        if pw == stored:
-            session['authenticated'] = True
-            session.permanent = True
-            return redirect(url_for('dashboard'))
-        error = 'Wrong password.'
-    return render_template('login.html', error=error)
-
-@app.route('/logout')
-def logout():
-    session.pop('authenticated', None)
-    return redirect(url_for('index'))
-
-# ── Routes: Dashboard ───────────────────────────────────────────────────────
-
-@app.route('/dashboard')
-@login_required
-def dashboard():
-    config = load_notary_config()
-    journal = load_journal()
-    sessions = []
-    for f in os.listdir(SESSIONS_DIR):
-        if f.endswith('.json'):
-            data = load_session_data(f.replace('.json', ''))
-            if data:
-                sessions.append(data)
-    sessions.sort(key=lambda x: x.get('created', ''), reverse=True)
-    return render_template('dashboard.html', config=config, journal=journal[-20:],
-                           sessions=sessions[:10])
-
-# ── Routes: Session Management ──────────────────────────────────────────────
-
-@app.route('/session/new', methods=['POST'])
-@login_required
-def new_session():
-    """Create a new notarization session."""
-    data = request.form
-    sid = str(uuid.uuid4())[:12]
-    session_data = {
-        'id': sid,
-        'created': datetime.datetime.utcnow().isoformat(),
-        'status': 'preparing',
-        'signer_name': data.get('signer_name', ''),
-        'signer_email': data.get('signer_email', ''),
-        'document_type': data.get('document_type', ''),
-        'num_signatures': int(data.get('num_signatures', 1)),
-        'notes': data.get('notes', ''),
-        'signatures': {},
-        'id_verified': False,
-        'kba_passed': False,
-        'video_recorded': False,
-        'payment_status': 'pending',
-        'document_path': None,
-        'document_name': None,
-    }
-    save_session_data(sid, session_data)
-    return redirect(url_for('session_view', sid=sid))
-
-@app.route('/session/new')
-@login_required
-def session_new():
-    return render_template('session_new.html')
-
-@app.route('/session/<sid>')
-@login_required
-def session_view(sid):
-    """View a notarization session."""
-    data = load_session_data(sid)
-    if not data:
-        flash('Session not found.')
-        return redirect(url_for('dashboard'))
-    config = load_notary_config()
-    return render_template('session.html', session=data, config=config)
-
-@app.route('/session/<sid>/upload', methods=['POST'])
-@login_required
-def upload_document(sid):
-    """Upload a document for notarization."""
-    data = load_session_data(sid)
-    if not data:
-        return jsonify({'error': 'Session not found'}), 404
-
-    if 'document' not in request.files:
-        return jsonify({'error': 'No file uploaded'}), 400
-
-    file = request.files['document']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-
-    file_bytes = file.read()
-    doc_path, doc_name = save_document(file_bytes, sid, file.filename)
-    data['document_path'] = doc_path
-    data['document_name'] = doc_name
-    data['status'] = 'ready'
-    save_session_data(sid, data)
-
-    return jsonify({'status': 'uploaded', 'filename': doc_name})
-
-@app.route('/session/<sid>/sign', methods=['POST'])
-@login_required
-def save_signature(sid):
-    """Save a signature for a session."""
-    data = load_session_data(sid)
-    if not data:
-        return jsonify({'error': 'Session not found'}), 404
-
-    body = request.get_json(force=True) or {}
-    signer = body.get('signer', 'signer')
-    sig_data = body.get('signature', '')
-    signed_date = body.get('date', datetime.datetime.now().strftime('%B %d, %Y'))
-
-    if not sig_data:
-        return jsonify({'error': 'No signature data'}), 400
-
-    sig_path = save_signature_image(sig_data, sid, signer)
-    data['signatures'][signer] = {
-        'path': sig_path,
-        'date': signed_date,
-    }
-    save_session_data(sid, data)
-
-    return jsonify({'status': 'signed', 'signer': signer})
-
-@app.route('/session/<sid>/update', methods=['POST'])
-@login_required
-def update_session(sid):
-    """Update session status/fields."""
-    data = load_session_data(sid)
-    if not data:
-        return jsonify({'error': 'Session not found'}), 404
-
-    body = request.get_json(force=True) or {}
-    for field in ['status', 'id_verified', 'kba_passed', 'video_recorded', 'payment_status']:
-        if field in body:
-            data[field] = body[field]
-    save_session_data(sid, data)
-    return jsonify({'status': 'updated'})
-
-@app.route('/session/<sid>/complete', methods=['POST'])
-@login_required
-def complete_session(sid):
-    """Complete the notarization and generate final PDF."""
-    data = load_session_data(sid)
-    if not data:
-        return jsonify({'error': 'Session not found'}), 404
-
-    config = load_notary_config()
-
-    # Generate notarized PDF
-    pdf_path = generate_notarized_pdf(data, config)
-    data['status'] = 'completed'
-    data['completed_at'] = datetime.datetime.utcnow().isoformat()
-    data['final_pdf'] = pdf_path
-    save_session_data(sid, data)
-
-    # Add to journal
-    add_journal_entry({
-        'session_id': sid,
-        'signer_name': data.get('signer_name', ''),
-        'document_type': data.get('document_type', ''),
-        'num_signatures': len(data.get('signatures', {})),
-        'fee': config.get('fee_per_signature', 25) * len(data.get('signatures', {})),
-        'status': 'completed',
-    })
-
-    return jsonify({'status': 'completed', 'pdf_path': pdf_path})
-
-# ── Routes: Settings ────────────────────────────────────────────────────────
-
-@app.route('/settings', methods=['GET', 'POST'])
-@login_required
-def settings():
-    config = load_notary_config()
-    if request.method == 'POST':
-        for key in config:
-            if key in request.form:
-                config[key] = request.form[key]
-        # Handle numeric fields
-        for key in ['fee_per_signature', 'fee_multi_signature', 'fee_loan_package', 'fee_travel', 'platform_commission']:
-            if key in request.form:
-                try:
-                    config[key] = float(request.form[key])
-                except ValueError:
-                    pass
-        if 'max_signers' in request.form:
-            try:
-                config['max_signers'] = int(request.form['max_signers'])
-            except ValueError:
-                pass
-        # Handle password change
-        if request.form.get('new_password'):
-            os.environ['ADMIN_PASSWORD'] = request.form['new_password']
-        save_notary_config(config)
-        flash('Settings saved successfully!', 'success')
-        return redirect(url_for('settings'))
-    return render_template('settings.html', config=config)
-
-# ── Routes: Journal ─────────────────────────────────────────────────────────
-
-@app.route('/journal')
-@login_required
-def journal():
-    entries = load_journal()
-    entries.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
-    return render_template('journal.html', entries=entries)
-
-@app.route('/api/journal')
-@login_required
-def api_journal():
-    entries = load_journal()
-    return jsonify(entries)
-
-# ── PDF Generation ──────────────────────────────────────────────────────────
+    return id_path
 
 def generate_notarized_pdf(session_data, config):
     """Generate a notarized PDF with signatures, seal, and notary certificate."""
@@ -385,52 +234,36 @@ def generate_notarized_pdf(session_data, config):
         return None
 
     output_path = os.path.join(DOCS_DIR, f"{session_data['id']}_notarized.pdf")
+    sigs = session_data.get('signatures', {})
 
-    doc = SimpleDocTemplate(
-        output_path, pagesize=letter,
-        leftMargin=0.75*inch, rightMargin=0.75*inch,
-        topMargin=0.5*inch, bottomMargin=0.5*inch,
-    )
+    doc = SimpleDocTemplate(output_path, pagesize=letter,
+                             leftMargin=0.75*inch, rightMargin=0.75*inch,
+                             topMargin=0.5*inch, bottomMargin=0.5*inch)
     styles = getSampleStyleSheet()
     NAVY = HexColor('#1A237E')
     GOLD = HexColor('#D4AF37')
     story = []
 
-    # Try to import original PDF pages
-    try:
-        from PyPDF2 import PdfReader, PdfWriter
-        reader = PdfReader(doc_path)
-        # We'll add the original pages plus a notary certificate page
-        # For now, create a notary certificate page
-        pass
-    except ImportError:
-        pass
-
-    # ── Notary Certificate Page ──────────────────────────────────────────
+    # Notary Certificate Page
     story.append(Spacer(1, 0.5*inch))
     story.append(Paragraph("NOTARY ACKNOWLEDGMENT",
         ParagraphStyle('NC', parent=styles['Title'], fontSize=16, textColor=NAVY,
                        alignment=TA_CENTER, fontName='Helvetica-Bold')))
     story.append(HRFlowable(width="60%", thickness=1, color=GOLD, spaceAfter=16, spaceBefore=6))
 
-    # State and county
-    story.append(Paragraph(
-        f"State of {config.get('state', 'North Carolina')}",
-        ParagraphStyle('S1', parent=styles['Normal'], fontSize=11, textColor=black,
-                       alignment=TA_LEFT, fontName='Helvetica')))
-    story.append(Paragraph(
-        f"County of {config.get('county', '_______________')}",
-        ParagraphStyle('S2', parent=styles['Normal'], fontSize=11, textColor=black,
-                       alignment=TA_LEFT, fontName='Helvetica')))
+    story.append(Paragraph(f"State of {config.get('state', 'North Carolina')}",
+        ParagraphStyle('S1', parent=styles['Normal'], fontSize=11, textColor=black, fontName='Helvetica')))
+    story.append(Paragraph(f"County of {config.get('county', '_______________')}",
+        ParagraphStyle('S2', parent=styles['Normal'], fontSize=11, textColor=black, fontName='Helvetica')))
     story.append(Spacer(1, 0.2*inch))
 
-    # Notary statement
     signer_name = session_data.get('signer_name', '_________________')
     doc_type = session_data.get('document_type', '_________________')
     today = datetime.datetime.now().strftime('%B %d, %Y')
+    notary_name = config.get('name', '_________________')
 
     story.append(Paragraph(
-        f"On this <b>{today}</b>, before me, <b>{config.get('name', '_________________')}</b>, "
+        f"On this <b>{today}</b>, before me, <b>{notary_name}</b>, "
         f"Notary Public for said State, personally appeared <b>{signer_name}</b>, "
         f"known to me (or proved to me on the basis of satisfactory evidence) to be the person "
         f"whose name is subscribed to the within instrument and acknowledged to me that they "
@@ -440,26 +273,28 @@ def generate_notarized_pdf(session_data, config):
     story.append(Spacer(1, 0.3*inch))
 
     # Signature lines
-    for signer_name_key, sig_info in session_data.get('signatures', {}).items():
-        sig_path = sig_info.get('path', '')
-        sig_date = sig_info.get('date', '_________________')
-        if sig_path and os.path.exists(sig_path):
-            sig_img = RLImage(sig_path, width=2.5*inch, height=0.6*inch, kind='proportional')
-            story.append(sig_img)
-        story.append(Paragraph(f"Signature of {signer_name_key}",
-            ParagraphStyle('SL', parent=styles['Normal'], fontSize=8, textColor=HexColor('#666'),
-                           fontName='Helvetica')))
-        story.append(Paragraph(f"Date: {sig_date}",
-            ParagraphStyle('SD', parent=styles['Normal'], fontSize=8, textColor=HexColor('#666'),
-                           fontName='Helvetica')))
-        story.append(Spacer(1, 0.15*inch))
+    if isinstance(sigs, dict):
+        for signer_name_key, sig_info in sigs.items():
+            if isinstance(sig_info, dict):
+                sig_path = sig_info.get('path', '')
+                sig_date = sig_info.get('date', '_________________')
+            else:
+                sig_path = sig_info
+                sig_date = today
+            if sig_path and os.path.exists(sig_path):
+                story.append(RLImage(sig_path, width=2.5*inch, height=0.6*inch, kind='proportional'))
+            story.append(Paragraph(f"Signature: {signer_name_key}",
+                ParagraphStyle('SL', parent=styles['Normal'], fontSize=8, textColor=HexColor('#666'), fontName='Helvetica')))
+            story.append(Paragraph(f"Date: {sig_date}",
+                ParagraphStyle('SD', parent=styles['Normal'], fontSize=8, textColor=HexColor('#666'), fontName='Helvetica')))
+            story.append(Spacer(1, 0.15*inch))
 
     story.append(Spacer(1, 0.3*inch))
-    story.append(HRFlowable(width="100%", thickness=0.5, color=HexColor('#ccc'), spaceAfter=10))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=HexColor('#ccc'), spaceBefore=10, spaceAfter=10))
 
-    # Notary seal area
+    # Notary seal
     seal_data = [[
-        Paragraph(f"<b>{config.get('name', 'NOTARY PUBLIC')}</b><br/>"
+        Paragraph(f"<b>{notary_name}</b><br/>"
                   f"Commission #{config.get('commission_number', '________')}<br/>"
                   f"Expires: {config.get('commission_expires', '________')}<br/>"
                   f"{config.get('county', '_______')} County, {config.get('state', 'NC')}",
@@ -476,31 +311,18 @@ def generate_notarized_pdf(session_data, config):
     ]))
     story.append(seal_table)
 
-    # Notary signature line
-    story.append(Spacer(1, 0.3*inch))
-    notary_sig_path = session_data.get('signatures', {}).get('notary', {}).get('path', '')
-    if notary_sig_path and os.path.exists(notary_sig_path):
-        story.append(RLImage(notary_sig_path, width=2.5*inch, height=0.5*inch, kind='proportional'))
-    story.append(HRFlowable(width="40%", thickness=0.5, color=black, spaceBefore=2))
-    story.append(Paragraph("Notary Public Signature",
-        ParagraphStyle('NS', parent=styles['Normal'], fontSize=8, textColor=HexColor('#666'),
-                       alignment=TA_CENTER, fontName='Helvetica')))
-
     doc.build(story)
 
-    # Merge with original PDF if PyPDF2 available
+    # Merge with original PDF
     try:
         from PyPDF2 import PdfReader, PdfWriter
         writer = PdfWriter()
-        # Add original pages
         reader = PdfReader(doc_path)
         for page in reader.pages:
             writer.add_page(page)
-        # Add notary certificate
         cert_reader = PdfReader(output_path)
         for page in cert_reader.pages:
             writer.add_page(page)
-        # Write merged
         with open(output_path, 'wb') as f:
             writer.write(f)
     except ImportError:
@@ -508,32 +330,357 @@ def generate_notarized_pdf(session_data, config):
 
     return output_path
 
+# ─── Routes: Public ──────────────────────────────────────────────────────────
+
+@app.route('/')
+def index():
+    profile = None
+    if session.get('user_id'):
+        return redirect(url_for('dashboard'))
+    return render_template('index.html', profile=profile)
+
+# ─── Routes: Auth ────────────────────────────────────────────────────────────
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+        full_name = request.form.get('full_name', '').strip()
+
+        if not email or not password or not full_name:
+            flash('All fields are required.', 'error')
+            return render_template('login.html', mode='register')
+
+        if len(password) < 8:
+            flash('Password must be at least 8 characters.', 'error')
+            return render_template('login.html', mode='register')
+
+        db = get_db()
+        existing = db.execute('SELECT id FROM users WHERE email = ?', (email,)).fetchone()
+        if existing:
+            flash('Email already registered.', 'error')
+            db.close()
+            return render_template('login.html', mode='register')
+
+        uid = str(uuid.uuid4())[:12]
+        pw_hash = hash_password(password)
+        now = datetime.datetime.utcnow().isoformat()
+
+        db.execute('INSERT INTO users (id, email, password_hash, full_name, created_at, is_admin) VALUES (?, ?, ?, ?, ?, 1)',
+                   (uid, email, pw_hash, full_name, now))
+        db.commit()
+        db.close()
+
+        session['user_id'] = uid
+        session.permanent = True
+        flash('Account created! Welcome to NotaryPro.', 'success')
+        return redirect(url_for('settings'))
+
+    return render_template('login.html', mode='register')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+
+        db = get_db()
+        user = db.execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
+        db.close()
+
+        if user and verify_password(password, user['password_hash']):
+            session['user_id'] = user['id']
+            session.permanent = True
+            return redirect(url_for('dashboard'))
+
+        flash('Invalid email or password.', 'error')
+    return render_template('login.html', mode='login')
+
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    return redirect(url_for('login'))
+
+# ─── Routes: Dashboard ───────────────────────────────────────────────────────
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    db = get_db()
+    user = get_user()
+    profile = get_profile()
+
+    sessions = db.execute(
+        'SELECT * FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 20',
+        (user['id'],)).fetchall()
+
+    journal = db.execute(
+        'SELECT * FROM journal WHERE user_id = ? ORDER BY created_at DESC LIMIT 20',
+        (user['id'],)).fetchall()
+
+    stats = {
+        'total_sessions': db.execute('SELECT COUNT(*) FROM sessions WHERE user_id = ?', (user['id'],)).fetchone()[0],
+        'completed': db.execute("SELECT COUNT(*) FROM sessions WHERE user_id = ? AND status = 'completed'", (user['id'],)).fetchone()[0],
+        'revenue': db.execute('SELECT COALESCE(SUM(fee), 0) FROM journal WHERE user_id = ?', (user['id'],)).fetchone()[0],
+    }
+    db.close()
+
+    return render_template('dashboard.html', user=user, profile=profile,
+                           sessions=[dict(s) for s in sessions],
+                           journal=[dict(j) for j in journal], stats=stats)
+
+# ─── Routes: Sessions ────────────────────────────────────────────────────────
+
+@app.route('/session/new')
+@login_required
+def session_new():
+    return render_template('session_new.html')
+
+@app.route('/session/create', methods=['POST'])
+@login_required
+def create_session():
+    user = get_db().execute('SELECT * FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+    if not user:
+        return redirect(url_for('login'))
+
+    sid = str(uuid.uuid4())[:12]
+    now = datetime.datetime.utcnow().isoformat()
+    expires = (datetime.datetime.utcnow() + datetime.timedelta(days=7)).isoformat()
+
+    db = get_db()
+    db.execute('''INSERT INTO sessions
+        (id, user_id, signer_name, signer_email, document_type, num_signatures, notes, status, created_at, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'preparing', ?, ?)''',
+        (sid, user['id'], request.form.get('signer_name', ''),
+         request.form.get('signer_email', ''), request.form.get('document_type', ''),
+         int(request.form.get('num_signatures', 1)), request.form.get('notes', ''),
+         now, expires))
+    db.commit()
+    db.close()
+
+    return redirect(url_for('session_view', sid=sid))
+
+@app.route('/session/<sid>')
+@login_required
+def session_view(sid):
+    db = get_db()
+    s = db.execute('SELECT * FROM sessions WHERE id = ? AND user_id = ?',
+                   (sid, session['user_id'])).fetchone()
+    if not s:
+        db.close()
+        flash('Session not found.')
+        return redirect(url_for('dashboard'))
+
+    sigs = db.execute('SELECT * FROM signatures WHERE session_id = ? ORDER BY created_at', (sid,)).fetchall()
+    db.close()
+
+    session_data = dict(s)
+    session_data['signatures'] = {r[' signer_name']: dict(r) for r in sigs}
+    profile = get_profile()
+
+    return render_template('session.html', session=session_data, profile=profile)
+
+@app.route('/session/<sid>/upload', methods=['POST'])
+@login_required
+def upload_document(sid):
+    db = get_db()
+    s = db.execute('SELECT * FROM sessions WHERE id = ? AND user_id = ?',
+                   (sid, session['user_id'])).fetchone()
+    if not s:
+        db.close()
+        return jsonify({'error': 'Session not found'}), 404
+
+    if 'document' not in request.files:
+        db.close()
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    file = request.files['document']
+    file_bytes = file.read()
+    doc_path = os.path.join(DOCS_DIR, f"{sid}_{file.filename.replace(' ','_')}")
+    with open(doc_path, 'wb') as f:
+        f.write(file_bytes)
+
+    db.execute('UPDATE sessions SET document_path = ?, document_name = ?, status = ? WHERE id = ?',
+               (doc_path, file.filename, 'ready', sid))
+    db.commit()
+    db.close()
+
+    return jsonify({'status': 'uploaded'})
+
+@app.route('/session/<sid>/upload-id', methods=['POST'])
+@login_required
+def upload_id(sid):
+    db = get_db()
+    s = db.execute('SELECT * FROM sessions WHERE id = ? AND user_id = ?',
+                   (sid, session['user_id'])).fetchone()
+    if not s:
+        db.close()
+        return jsonify({'error': 'Session not found'}), 404
+
+    if 'id_image' not in request.files:
+        db.close()
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    file = request.files['id_image']
+    file_bytes = file.read()
+    id_path = save_id_image(file_bytes, sid)
+
+    db.execute('UPDATE sessions SET id_upload_path = ?, id_verified = 1 WHERE id = ?',
+               (id_path, sid))
+    db.commit()
+    db.close()
+
+    return jsonify({'status': 'uploaded'})
+
+@app.route('/session/<sid>/sign', methods=['POST'])
+@login_required
+def save_signature(sid):
+    body = request.get_json(force=True) or {}
+    signer = body.get('signer', 'signer')
+    sig_data = body.get('signature', '')
+    signed_date = body.get('date', datetime.datetime.now().strftime('%B %d, %Y'))
+    now = datetime.datetime.utcnow().isoformat()
+
+    if not sig_data:
+        return jsonify({'error': 'No signature data'}), 400
+
+    sig_path = save_signature_image(sig_data, sid, signer)
+
+    sig_id = str(uuid.uuid4())[:12]
+    db = get_db()
+    db.execute('INSERT INTO signatures (id, session_id, signer_name, signature_path, signed_date, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+               (sig_id, sid, signer, sig_path, signed_date, now))
+    db.commit()
+    db.close()
+
+    return jsonify({'status': 'signed'})
+
+@app.route('/session/<sid>/complete', methods=['POST'])
+@login_required
+def complete_session(sid):
+    db = get_db()
+    s = db.execute('SELECT * FROM sessions WHERE id = ? AND user_id = ?',
+                   (sid, session['user_id'])).fetchone()
+    if not s:
+        db.close()
+        return jsonify({'error': 'Session not found'}), 404
+
+    profile = get_profile()
+    session_data = dict(s)
+    sigs = db.execute('SELECT * FROM signatures WHERE session_id = ?', (sid,)).fetchall()
+    session_data['signatures'] = {r['signer_name']: dict(r) for r in sigs}
+
+    pdf_path = generate_notarized_pdf(session_data, profile)
+    now = datetime.datetime.utcnow().isoformat()
+    fee = profile.get('fee_per_signature', 25) * len(sigs)
+
+    db.execute('UPDATE sessions SET status = ?, completed_at = ?, final_pdf = ?, payment_amount = ? WHERE id = ?',
+               ('completed', now, pdf_path, fee, sid))
+
+    jid = str(uuid.uuid4())[:12]
+    db.execute('''INSERT INTO journal
+        (id, user_id, session_id, signer_name, document_type, num_signatures, fee, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?)''',
+        (jid, session['user_id'], sid, s['signer_name'], s['document_type'],
+         len(sigs), fee, now))
+    db.commit()
+    db.close()
+
+    return jsonify({'status': 'completed', 'download': url_for('download_pdf', sid=sid)})
+
 @app.route('/session/<sid>/download')
 @login_required
 def download_pdf(sid):
-    """Download the notarized PDF."""
-    data = load_session_data(sid)
-    if not data or not data.get('final_pdf'):
-        flash('PDF not ready yet.')
+    db = get_db()
+    s = db.execute('SELECT * FROM sessions WHERE id = ? AND user_id = ?',
+                   (sid, session['user_id'])).fetchone()
+    db.close()
+    if not s or not s['final_pdf']:
+        flash('PDF not ready.')
         return redirect(url_for('session_view', sid=sid))
-    return send_file(data['final_pdf'], mimetype='application/pdf',
+    return send_file(s['final_pdf'], mimetype='application/pdf',
                      download_name=f'notarized_{sid}.pdf')
 
-# ── API: Signature image retrieval ──────────────────────────────────────────
+# ─── Routes: Settings ────────────────────────────────────────────────────────
 
-@app.route('/signature/<sid>/<signer>')
-def get_signature(sid, signer):
-    """Serve a signature image."""
-    sig_name = f"{sid}_{signer}.png"
-    sig_path = os.path.join(SIGS_DIR, sig_name)
-    if not os.path.exists(sig_path):
-        sig_name = f"{sid}_{signer}.jpg"
-        sig_path = os.path.join(SIGS_DIR, sig_name)
-    if os.path.exists(sig_path):
-        return send_file(sig_path, mimetype='image/png')
+@app.route('/settings', methods=['GET', 'POST'])
+@login_required
+def settings():
+    db = get_db()
+    user = get_user()
+
+    if request.method == 'POST':
+        # Update notary profile
+        fields = ['commission_number','commission_expires','county','state',
+                  'commission_type','bond_amount','business_name','business_email',
+                  'business_phone','business_address','website','fee_per_signature',
+                  'fee_multi_signature','fee_loan_package','fee_travel','max_signers',
+                  'stripe_account_id','payment_model','platform_commission']
+
+        existing = db.execute('SELECT * FROM notary_profile WHERE user_id = ?', (user['id'],)).fetchone()
+        now = datetime.datetime.utcnow().isoformat()
+
+        if existing:
+            set_clause = ', '.join([f'{f} = ?' for f in fields]) + ', updated_at = ?'
+            values = [request.form.get(f, '') for f in fields] + [now, user['id']]
+            db.execute(f'UPDATE notary_profile SET {set_clause} WHERE user_id = ?', values)
+        else:
+            pid = str(uuid.uuid4())[:12]
+            cols = ['id','user_id'] + fields + ['updated_at']
+            placeholders = ','.join(['?' for _ in cols])
+            values = [pid, user['id']] + [request.form.get(f, '') for f in fields] + [now]
+            db.execute(f'INSERT INTO notary_profile ({",".join(cols)}) VALUES ({placeholders})', values)
+
+        # Update user name
+        if request.form.get('full_name'):
+            db.execute('UPDATE users SET full_name = ? WHERE id = ?', (request.form['full_name'], user['id']))
+
+        # Update password
+        if request.form.get('new_password'):
+            pw_hash = hash_password(request.form['new_password'])
+            db.execute('UPDATE users SET password_hash = ? WHERE id = ?', (pw_hash, user['id']))
+
+        db.commit()
+        flash('Settings saved successfully!', 'success')
+
+    profile = get_profile()
+    db.close()
+    return render_template('settings.html', user=user, config=profile)
+
+# ─── Routes: Journal ─────────────────────────────────────────────────────────
+
+@app.route('/journal')
+@login_required
+def journal():
+    db = get_db()
+    entries = db.execute('SELECT * FROM journal WHERE user_id = ? ORDER BY created_at DESC',
+                         (session['user_id'],)).fetchall()
+    db.close()
+    return render_template('journal.html', entries=[dict(e) for e in entries])
+
+@app.route('/api/journal')
+@login_required
+def api_journal():
+    db = get_db()
+    entries = db.execute('SELECT * FROM journal WHERE user_id = ? ORDER BY created_at DESC',
+                         (session['user_id'],)).fetchall()
+    db.close()
+    return jsonify([dict(e) for e in entries])
+
+# ─── Signature image retrieval ────────────────────────────────────────────────
+
+@app.route('/sigimg/<sid>/<signer>')
+@login_required
+def get_sig_image(sid, signer):
+    for ext in ['png', 'jpg']:
+        path = os.path.join(SIGS_DIR, f"{sid}_{signer}.{ext}")
+        if os.path.exists(path):
+            return send_file(path, mimetype=f'image/{ext}')
     return jsonify({'error': 'Not found'}), 404
 
-# ── Run ─────────────────────────────────────────────────────────────────────
+# ─── Run ──────────────────────────────────────────────────────────────────────
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)

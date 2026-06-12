@@ -85,8 +85,9 @@ th{font-weight:600;color:var(--muted);font-size:0.75rem;text-transform:uppercase
       <tr><th>Email</th><td>{{ session.signer_email or '—' }}</td></tr>
       <tr><th>Document Type</th><td>{{ session.document_type or '—' }}</td></tr>
       <tr><th>Signatures</th><td>{{ session.signatures|length }} of {{ session.num_signatures }}</td></tr>
+      <tr><th>ID Verified</th><td>{{ '✅ Yes' if session.id_verified else '❌ No' }}</td></tr>
       <tr><th>Document</th><td>{{ session.document_name or 'Not uploaded' }}</td></tr>
-      <tr><th>Created</th><td>{{ session.created[:19] if session.created else '—' }}</td></tr>
+      <tr><th>Created</th><td>{{ session.created_at[:19] if session.created_at else '—' }}</td></tr>
     </table>
   </div>
 
@@ -115,7 +116,7 @@ th{font-weight:600;color:var(--muted);font-size:0.75rem;text-transform:uppercase
         {% for name, info in session.signatures.items() %}
         <tr>
           <td>{{ name }}</td>
-          <td>{{ info.date }}</td>
+          <td>{{ info.get('signed_date', info.get('date', '—')) }}</td>
           <td><span class="badge badge-green">✓ Signed</span></td>
         </tr>
         {% endfor %}

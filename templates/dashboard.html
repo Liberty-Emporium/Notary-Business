@@ -101,17 +101,15 @@ tr:hover{background:#fafafa}
   <div class="stats">
     <div class="stat">
       <div class="label">Total Sessions</div>
-      <div class="value">{{ sessions|length }}</div>
+      <div class="value">{{ stats.total_sessions }}</div>
     </div>
     <div class="stat">
       <div class="label">Completed</div>
-      <div class="value" style="color:var(--green)">{{ journal|selectattr('status','equalto','completed')|list|length }}</div>
+      <div class="value" style="color:var(--green)">{{ stats.completed }}</div>
     </div>
     <div class="stat">
       <div class="label">Total Revenue</div>
-      <div class="value" style="color:var(--blue)">
-        ${{ "%.2f"|format(journal|sum(attribute='fee')) }}
-      </div>
+      <div class="value" style="color:var(--blue)">${{ "%.2f"|format(stats.revenue) }}</div>
     </div>
     <div class="stat">
       <div class="label">This Month</div>
