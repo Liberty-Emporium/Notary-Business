@@ -36,13 +36,19 @@ app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(days=30)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
 # Fix for HTTPS/Proxy (Railway) — ensure session cookies work behind HTTPS
-app.config['SESSION_COOKIE_SECURE'] = False  # Allow HTTP for local dev
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['PREFERRED_URL_SCHEME'] = 'https'
 
 # Trust Railway's proxy headers
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+@app.before_request
+def detect_https():
+    """Set secure cookie when behind HTTPS proxy."""
+    if request.headers.get('X-Forwarded-Proto') == 'https':
+        app.config['SESSION_COOKIE_SECURE'] = True
+    else:
+        app.config['SESSION_COOKIE_SECURE'] = False
 
 # Stripe (optional — uncomment when ready)
 # stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', '')
