@@ -18,9 +18,9 @@ import threading
 from functools import wraps
 
 import jwt
-import stripe
 from flask import (Flask, render_template, request, redirect, url_for, flash,
                    session, jsonify, send_file, send_from_directory)
+from werkzeug.middleware.proxy_fix import ProxyFix
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.lib.colors import HexColor, white, black
@@ -42,17 +42,21 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PREFERRED_URL_SCHEME'] = 'https'
 
 # Trust Railway's proxy headers
-from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
-# Stripe
-stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', '')
-STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
+# Stripe (optional — uncomment when ready)
+# stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', '')
+# STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
 
 # Data directories
 DATA_DIR = os.environ.get('RAILWAY_DATA_DIR', '/data')
 APP_DATA = os.path.join(DATA_DIR, 'notary_app')
-os.makedirs(APP_DATA, exist_ok=True)
+try:
+    os.makedirs(APP_DATA, exist_ok=True)
+except PermissionError:
+    # Fallback to /tmp if /data is not writable (local dev or pre-volume)
+    APP_DATA = os.path.join('/tmp', 'notary_app')
+    os.makedirs(APP_DATA, exist_ok=True)
 
 SESSIONS_DIR = os.path.join(APP_DATA, 'sessions')
 DOCS_DIR = os.path.join(APP_DATA, 'documents')
