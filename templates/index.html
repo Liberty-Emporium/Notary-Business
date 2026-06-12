@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ config.get('business_name', 'NotaryPro') }} — Remote Online Notary</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#1A237E;--gold:#D4AF37;--bg:#f8f9fa;--card:#fff;--text:#333;--muted:#666;--green:#4CAF50;--red:#f44336;--border:#e0e0e0}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+a{color:var(--navy);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Nav */
+.nav{background:var(--navy);color:#fff;padding:16px 0}
+.nav-inner{max-width:1100px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;align-items:center}
+.nav h1{font-size:1.4rem}
+.nav-links a{color:#fff;margin-left:20px;font-size:0.9rem;font-weight:500}
+.nav-links a:hover{color:var(--gold)}
+
+/* Hero */
+.hero{background:linear-gradient(135deg,#1A237E 0%,#283593 100%);color:#fff;padding:80px 20px;text-align:center}
+.hero h2{font-size:2.5rem;margin-bottom:16px;font-weight:700}
+.hero p{font-size:1.1rem;opacity:0.9;max-width:600px;margin:0 auto 32px}
+.btn{display:inline-block;padding:14px 32px;border-radius:8px;font-weight:600;font-size:1rem;cursor:pointer;border:none;transition:all 0.2s}
+.btn-primary{background:var(--gold);color:#fff}
+.btn-primary:hover{background:#C5A030;transform:translateY(-2px);box-shadow:0 4px 12px rgba(212,175,55,0.4)}
+.btn-outline{background:transparent;color:#fff;border:2px solid rgba(255,255,255,0.5)}
+.btn-outline:hover{border-color:#fff}
+.btn-lg{padding:18px 40px;font-size:1.1rem}
+
+/* Section */
+.section{padding:60px 20px;max-width:1100px;margin:0 auto}
+.section h3{font-size:1.8rem;text-align:center;margin-bottom:40px;color:var(--navy)}
+
+/* Cards */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:32px;text-align:center;transition:box-shadow 0.2s}
+.card:hover{box-shadow:0 8px 24px rgba(0,0,0,0.08)}
+.card .icon{font-size:2.5rem;margin-bottom:16px}
+.card h4{font-size:1.2rem;margin-bottom:8px;color:var(--navy)}
+.card p{color:var(--muted);font-size:0.9rem}
+
+/* Features */
+.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:32px}
+.feature{display:flex;gap:16px}
+.feature .num{background:var(--navy);color:#fff;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0}
+.feature h4{margin-bottom:4px;font-size:1rem}
+.feature p{color:var(--muted);font-size:0.85rem}
+
+/* Pricing */
+.pricing-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px}
+.price-card{background:var(--card);border:2px solid var(--border);border-radius:12px;padding:32px;text-align:center}
+.price-card.popular{border-color:var(--navy);position:relative}
+.price-card.popular::before{content:'POPULAR';position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:4px 16px;border-radius:20px;font-size:0.75rem;font-weight:700}
+.price-card .price{font-size:2.5rem;font-weight:700;color:var(--navy);margin:8px 0}
+.price-card .price span{font-size:1rem;font-weight:400;color:var(--muted)}
+.price-card ul{list-style:none;margin:20px 0}
+.price-card li{padding:8px 0;border-bottom:1px solid #eee;font-size:0.9rem}
+
+/* CTA */
+.cta{background:var(--navy);color:#fff;padding:60px 20px;text-align:center}
+.cta h3{color:#fff;margin-bottom:16px}
+.cta p{opacity:0.8;margin-bottom:24px}
+
+/* Footer */
+.footer{background:#0d1137;color:rgba(255,255,255,0.6);padding:32px 20px;text-align:center;font-size:0.85rem}
+.footer a{color:rgba(255,255,255,0.8)}
+
+@media(max-width:768px){.hero h2{font-size:1.8rem}.nav-inner{flex-direction:column;gap:12px}}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="nav-inner">
+    <h1>🏛️ {{ config.get('business_name', 'NotaryPro') }}</h1>
+    <div class="nav-links">
+      <a href="#how-it-works">How It Works</a>
+      <a href="#pricing">Pricing</a>
+      <a href="/login">Login</a>
+    </div>
+  </div>
+</div>
+
+<div class="hero">
+  <h2>Remote Online Notarization</h2>
+  <p>Get your documents notarized online in minutes, not days. North Carolina RON-compliant. Secure, fast, and legally binding.</p>
+  <a href="/login" class="btn btn-primary btn-lg">Start Notarizing →</a>
+  <a href="#how-it-works" class="btn btn-outline btn-lg" style="margin-left:12px">Learn More</a>
+</div>
+
+<div class="section">
+  <h3>Why Choose Us?</h3>
+  <div class="cards">
+    <div class="card">
+      <div class="icon">⚡</div>
+      <h4>Fast & Easy</h4>
+      <p>Notarize documents in under 15 minutes from anywhere in North Carolina. No appointments needed.</p>
+    </div>
+    <div class="card">
+      <div class="icon">🔒</div>
+      <h4>Secure & Compliant</h4>
+      <p>Full NC RON compliance with encrypted video sessions, ID verification, and tamper-evident seals.</p>
+    </div>
+    <div class="card">
+      <div class="icon">💰</div>
+      <h4>Affordable</h4>
+      <p>{{ config.get('fee_per_signature', 25) }} per signature. No hidden fees. Pay online securely.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section" id="how-it-works" style="background:#fff;border-radius:16px;padding:60px 40px;margin-top:40px">
+  <h3>How It Works</h3>
+  <div class="features">
+    <div class="feature">
+      <div class="num">1</div>
+      <div><h4>Upload Document</h4><p>Upload your PDF document that needs notarization.</p></div>
+    </div>
+    <div class="feature">
+      <div class="num">2</div>
+      <div><h4>Verify Identity</h4><p>Upload your government-issued ID and complete identity verification.</p></div>
+    </div>
+    <div class="feature">
+      <div class="num">3</div>
+      <div><h4>Video Session</h4><p>Connect with the notary via secure video call for identity confirmation.</p></div>
+    </div>
+    <div class="feature">
+      <div class="num">4</div>
+      <div><h4>Sign & Seal</h4><p>E-sign your document. The notary applies their official digital seal and signature.</p></div>
+    </div>
+    <div class="feature">
+      <div class="num">5</div>
+      <div><h4>Download</h4><p>Get your notarized PDF instantly. Legally binding and ready to use.</p></div>
+    </div>
+  </div>
+</div>
+
+<div class="section" id="pricing">
+  <h3>Simple Pricing</h3>
+  <div class="pricing-cards">
+    <div class="price-card">
+      <h4>Standard</h4>
+      <div class="price">${{ config.get('fee_per_signature', 25) }}<span>/signature</span></div>
+      <ul>
+        <li>✅ One signature per document</li>
+        <li>✅ Video identity verification</li>
+        <li>✅ Digital notary seal</li>
+        <li>✅ Instant PDF download</li>
+      </ul>
+    </div>
+    <div class="price-card popular">
+      <h4>Multi-Signature</h4>
+      <div class="price">${{ config.get('fee_multi_signature', 10) }}<span>/addl signature</span></div>
+      <ul>
+        <li>✅ Multiple signers on same document</li>
+        <li>✅ Separate video sessions</li>
+        <li>✅ Individual notary certificates</li>
+        <li>✅ Bulk discount pricing</li>
+      </ul>
+    </div>
+    <div class="price-card">
+      <h4>Loan Packages</h4>
+      <div class="price">$75-150</div>
+      <ul>
+        <li>✅ Full loan document packages</li>
+        <li>✅ Priority scheduling</li>
+        <li>✅ Escrow company integration</li>
+        <li>✅ Same-day turnaround</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="cta">
+  <h3>Ready to Get Started?</h3>
+  <p>Documents notarized securely and legally online.</p>
+  <a href="/login" class="btn btn-primary">Login to Begin →</a>
+</div>
+
+<div class="footer">
+  <p>{{ config.get('business_name', 'NotaryPro') }} | Commission #{{ config.get('commission_number', 'N/A') }} | {{ config.get('county', '') }} County, {{ config.get('state', 'NC') }}</p>
+  <p style="margin-top:8px">© {{ now.year if now else 2026 }} All rights reserved. Licensed Notary Public in the State of North Carolina.</p>
+</div>
+</body>
+</html>

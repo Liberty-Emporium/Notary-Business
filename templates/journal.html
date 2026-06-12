@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Journal — NotaryPro</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#1A237E;--gold:#D4AF37;--bg:#f8f9fa;--card:#fff;--text:#333;--muted:#666;--green:#4CAF50;--border:#e0e0e0}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+.layout{display:flex;min-height:100vh}
+.sidebar{width:240px;background:var(--navy);color:#fff;padding:24px 0;flex-shrink:0;position:fixed;height:100vh;overflow-y:auto}
+.sidebar h2{padding:0 20px 20px;font-size:1.2rem;border-bottom:1px solid rgba(255,255,255,0.1)}
+.sidebar nav a{display:block;padding:12px 20px;color:rgba(255,255,255,0.8);font-size:0.9rem}
+.sidebar nav a:hover,.sidebar nav a.active{background:rgba(255,255,255,0.1);color:#fff;text-decoration:none}
+.sidebar nav a .icon{margin-right:8px}
+.sidebar .logout{margin-top:40px;border-top:1px solid rgba(255,255,255,0.1);padding-top:20px}
+.main{flex:1;margin-left:240px;padding:32px;max-width:1000px}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
+.header h1{font-size:1.3rem;color:var(--navy)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px}
+table{width:100%;border-collapse:collapse;font-size:0.85rem}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid #eee}
+th{font-weight:600;color:var(--muted);font-size:0.75rem;text-transform:uppercase}
+tr:hover{background:#fafafa}
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:0.75rem;font-weight:600}
+.badge-green{background:#E8F5E9;color:#2E7D32}
+@media(max-width:768px){.sidebar{display:none}.main{margin-left:0;padding:16px}}
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <h2>🏛️ NotaryPro</h2>
+  <nav>
+    <a href="/dashboard"><span class="icon">📊</span> Dashboard</a>
+    <a href="/session/new"><span class="icon">➕</span> New Session</a>
+    <a href="/journal" class="active"><span class="icon">📋</span> Journal</a>
+    <a href="/settings"><span class="icon">⚙️</span> Settings</a>
+    <div class="logout"><a href="/logout"><span class="icon">🚪</span> Logout</a></div>
+  </nav>
+</div>
+<div class="main">
+  <div class="header">
+    <h1>📋 Notary Journal</h1>
+    <span style="color:var(--muted);font-size:0.9rem">{{ entries|length }} entries</span>
+  </div>
+  <div class="card">
+    {% if entries %}
+    <table>
+      <thead><tr><th>Date</th><th>Session</th><th>Signer</th><th>Document</th><th>Signatures</th><th>Fee</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for e in entries|reverse %}
+        <tr>
+          <td>{{ e.timestamp[:10] if e.timestamp else '—' }}</td>
+          <td><code>{{ e.session_id[:8] if e.session_id else '—' }}</code></td>
+          <td>{{ e.signer_name or '—' }}</td>
+          <td>{{ e.document_type or '—' }}</td>
+          <td>{{ e.num_signatures or 1 }}</td>
+          <td>${{ "%.2f"|format(e.fee|default(0)) }}</td>
+          <td><span class="badge badge-green">{{ e.status }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="text-align:center;color:var(--muted);padding:40px">No journal entries yet. Complete a session to see entries here.</p>
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>

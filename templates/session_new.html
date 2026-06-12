@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>New Session — NotaryPro</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#1A237E;--gold:#D4AF37;--bg:#f8f9fa;--card:#fff;--text:#333;--muted:#666;--green:#4CAF50;--red:#f44336;--blue:#2196F3;--border:#e0e0e0}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+a{color:var(--navy);text-decoration:none}
+.layout{display:flex;min-height:100vh}
+.sidebar{width:240px;background:var(--navy);color:#fff;padding:24px 0;flex-shrink:0;position:fixed;height:100vh;overflow-y:auto}
+.sidebar h2{padding:0 20px 20px;font-size:1.2rem;border-bottom:1px solid rgba(255,255,255,0.1)}
+.sidebar nav a{display:block;padding:12px 20px;color:rgba(255,255,255,0.8);font-size:0.9rem}
+.sidebar nav a:hover,.sidebar nav a.active{background:rgba(255,255,255,0.1);color:#fff;text-decoration:none}
+.sidebar nav a .icon{margin-right:8px}
+.sidebar .logout{margin-top:40px;border-top:1px solid rgba(255,255,255,0.1);padding-top:20px}
+.main{flex:1;margin-left:240px;padding:32px;max-width:700px}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
+.header h1{font-size:1.3rem;color:var(--navy)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:20px}
+.card h3{font-size:1rem;margin-bottom:16px;color:var(--navy)}
+.btn{display:inline-block;padding:10px 20px;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;border:none;font-family:'Inter',sans-serif}
+.btn-primary{background:var(--navy);color:#fff}
+.btn-success{background:var(--green);color:#fff}
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:0.85rem;font-weight:600;margin-bottom:6px}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:0.9rem;font-family:'Inter',sans-serif;outline:none}
+.form-group input:focus,.form-group select:focus{border-color:var(--navy)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:768px){.sidebar{display:none}.main{margin-left:0;padding:16px}.form-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <h2>🏛️ NotaryPro</h2>
+  <nav>
+    <a href="/dashboard"><span class="icon">📊</span> Dashboard</a>
+    <a href="/session/new" class="active"><span class="icon">➕</span> New Session</a>
+    <a href="/journal"><span class="icon">📋</span> Journal</a>
+    <a href="/settings"><span class="icon">⚙️</span> Settings</a>
+    <div class="logout"><a href="/logout"><span class="icon">🚪</span> Logout</a></div>
+  </nav>
+</div>
+<div class="main">
+  <div class="header">
+    <h1>New Notarization Session</h1>
+    <a href="/dashboard" class="btn btn-primary">← Back</a>
+  </div>
+  <form method="POST" action="/session/new">
+    <div class="card">
+      <h3>Signer Information</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Signer Full Name *</label>
+          <input type="text" name="signer_name" placeholder="John Doe" required>
+        </div>
+        <div class="form-group">
+          <label>Signer Email</label>
+          <input type="email" name="signer_email" placeholder="john@example.com">
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Document Details</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Document Type *</label>
+          <select name="document_type" required>
+            <option value="">Select type...</option>
+            <option value="Trust Agreement">Trust Agreement</option>
+            <option value="Power of Attorney">Power of Attorney</option>
+            <option value="Deed">Deed</option>
+            <option value="Affidavit">Affidavit</option>
+            <option value="Contract">Contract</option>
+            <option value="Loan Document">Loan Document</option>
+            <option value="Will">Will</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Number of Signatures *</label>
+          <input type="number" name="num_signatures" value="1" min="1" max="10" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes (optional)</label>
+        <textarea name="notes" rows="3" placeholder="Any special instructions..."></textarea>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-success" style="width:100%;padding:14px;font-size:1rem">Create Session →</button>
+  </form>
+</div>
+</body>
+</html>

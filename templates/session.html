@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session {{ session.id[:8] }} — NotaryPro</title>
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.2.0/dist/signature_pad.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#1A237E;--gold:#D4AF37;--bg:#f8f9fa;--card:#fff;--text:#333;--muted:#666;--green:#4CAF50;--red:#f44336;--blue:#2196F3;--border:#e0e0e0}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+a{color:var(--navy);text-decoration:none}
+.layout{display:flex;min-height:100vh}
+.sidebar{width:240px;background:var(--navy);color:#fff;padding:24px 0;flex-shrink:0;position:fixed;height:100vh;overflow-y:auto}
+.sidebar h2{padding:0 20px 20px;font-size:1.2rem;border-bottom:1px solid rgba(255,255,255,0.1)}
+.sidebar nav a{display:block;padding:12px 20px;color:rgba(255,255,255,0.8);font-size:0.9rem}
+.sidebar nav a:hover,.sidebar nav a.active{background:rgba(255,255,255,0.1);color:#fff;text-decoration:none}
+.sidebar nav a .icon{margin-right:8px}
+.sidebar .logout{margin-top:40px;border-top:1px solid rgba(255,255,255,0.1);padding-top:20px}
+.main{flex:1;margin-left:240px;padding:32px;max-width:900px}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
+.header h1{font-size:1.3rem;color:var(--navy)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:20px}
+.card h3{font-size:1rem;margin-bottom:12px;color:var(--navy)}
+.btn{display:inline-block;padding:10px 20px;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;border:none;font-family:'Inter',sans-serif}
+.btn-primary{background:var(--navy);color:#fff}
+.btn-success{background:var(--green);color:#fff}
+.btn-danger{background:var(--red);color:#fff}
+.btn-sm{padding:6px 12px;font-size:0.8rem}
+.form-group{margin-bottom:12px}
+.form-group label{display:block;font-size:0.8rem;font-weight:600;margin-bottom:4px}
+.form-group input,.form-group select{width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:0.9rem}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.steps{display:flex;gap:8px;margin-bottom:24px}
+.step{flex:1;padding:12px;text-align:center;border-radius:8px;font-size:0.8rem;font-weight:600;background:#eee;color:var(--muted)}
+.step.active{background:var(--navy);color:#fff}
+.step.done{background:var(--green);color:#fff}
+.sig-pad{border:2px solid var(--navy);border-radius:8px;background:#FFFEF5;cursor:crosshair;margin:12px 0}
+.sig-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;justify-content:center;align-items:center}
+.sig-overlay.active{display:flex}
+.sig-dialog{background:#fff;border-radius:12px;padding:24px;width:600px;max-width:95vw}
+.sig-dialog h4{margin-bottom:12px;color:var(--navy)}
+.sig-dialog canvas{width:100%;height:200px;border:2px solid var(--navy);border-radius:8px;cursor:crosshair}
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:0.75rem;font-weight:600}
+.badge-green{background:#E8F5E9;color:#2E7D32}
+.badge-blue{background:#E3F2FD;color:#1565C0}
+.badge-yellow{background:#FFF8E1;color:#F57F17}
+table{width:100%;border-collapse:collapse;font-size:0.85rem}
+th,td{padding:8px 12px;text-align:left;border-bottom:1px solid #eee}
+th{font-weight:600;color:var(--muted);font-size:0.75rem;text-transform:uppercase}
+@media(max-width:768px){.sidebar{display:none}.main{margin-left:0;padding:16px}.form-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <h2>🏛️ NotaryPro</h2>
+  <nav>
+    <a href="/dashboard"><span class="icon">📊</span> Dashboard</a>
+    <a href="/session/new"><span class="icon">➕</span> New Session</a>
+    <a href="/journal"><span class="icon">📋</span> Journal</a>
+    <a href="/settings"><span class="icon">⚙️</span> Settings</a>
+    <div class="logout"><a href="/logout"><span class="icon">🚪</span> Logout</a></div>
+  </nav>
+</div>
+
+<div class="main">
+  <div class="header">
+    <h1>Session <code>{{ session.id[:8] }}</code> <span class="badge badge-{{ 'green' if session.status == 'completed' else 'blue' if session.status == 'ready' else 'yellow' }}">{{ session.status }}</span></h1>
+    <a href="/dashboard" class="btn btn-sm btn-primary">← Back</a>
+  </div>
+
+  <div class="steps">
+    <div class="step {{ 'done' if session.status != 'preparing' else 'active' }}">1. Setup</div>
+    <div class="step {{ 'done' if session.status in ['ready','signing','completed'] else 'active' if session.status == 'preparing' else '' }}">2. Document</div>
+    <div class="step {{ 'done' if session.status == 'completed' else 'active' if session.status == 'signing' else '' }}">3. Sign</div>
+    <div class="step {{ 'done' if session.status == 'completed' else 'active' if session.status == 'completed' else '' }}">4. Complete</div>
+  </div>
+
+  <!-- Session Info -->
+  <div class="card">
+    <h3>Session Details</h3>
+    <table>
+      <tr><th>Signer</th><td>{{ session.signer_name or '—' }}</td></tr>
+      <tr><th>Email</th><td>{{ session.signer_email or '—' }}</td></tr>
+      <tr><th>Document Type</th><td>{{ session.document_type or '—' }}</td></tr>
+      <tr><th>Signatures</th><td>{{ session.signatures|length }} of {{ session.num_signatures }}</td></tr>
+      <tr><th>Document</th><td>{{ session.document_name or 'Not uploaded' }}</td></tr>
+      <tr><th>Created</th><td>{{ session.created[:19] if session.created else '—' }}</td></tr>
+    </table>
+  </div>
+
+  <!-- Upload Document -->
+  {% if not session.document_path %}
+  <div class="card">
+    <h3>📄 Upload Document</h3>
+    <form id="uploadForm" enctype="multipart/form-data">
+      <div class="form-group">
+        <label>Select PDF Document</label>
+        <input type="file" name="document" accept=".pdf" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Upload</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <!-- Signatures -->
+  {% if session.document_path %}
+  <div class="card">
+    <h3>✍️ Signatures ({{ session.signatures|length }}/{{ session.num_signatures }})</h3>
+    {% if session.signatures %}
+    <table>
+      <thead><tr><th>Signer</th><th>Date</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for name, info in session.signatures.items() %}
+        <tr>
+          <td>{{ name }}</td>
+          <td>{{ info.date }}</td>
+          <td><span class="badge badge-green">✓ Signed</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% if session.signatures|length < session.num_signatures %}
+    <div style="margin-top:16px">
+      <label style="font-size:0.85rem;font-weight:600">Add Signature For:</label>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        {% for i in range(session.num_signatures) %}
+        <button class="btn btn-sm btn-primary" onclick="openSignDialog('signer{{ i+1 }}')">Sign as Signer {{ i+1 }}</button>
+        {% endfor %}
+        {% if 'notary' not in session.signatures %}
+        <button class="btn btn-sm btn-success" onclick="openSignDialog('notary')">🖊 Notary Sign</button>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Complete -->
+  {% if session.signatures|length >= session.num_signatures and session.status != 'completed' %}
+  <div class="card">
+    <h3>✅ Complete Notarization</h3>
+    <p style="margin-bottom:16px;color:var(--muted)">All signatures collected. Generate the final notarized PDF.</p>
+    <button class="btn btn-success" onclick="completeSession()">Generate Notarized PDF</button>
+  </div>
+  {% endif %}
+
+  <!-- Download -->
+  {% if session.status == 'completed' and session.final_pdf %}
+  <div class="card" style="background:#E8F5E9;border-color:#C8E6C9">
+    <h3>✅ Notarization Complete!</h3>
+    <p style="margin-bottom:16px">Your document has been notarized and is ready for download.</p>
+    <a href="/session/{{ session.id }}/download" class="btn btn-success">📄 Download Notarized PDF</a>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Signature Dialog -->
+<div class="sig-overlay" id="sigOverlay" onclick="if(event.target===this)closeSignDialog()">
+  <div class="sig-dialog">
+    <h4 id="sigTitle">✍️ Sign Document</h4>
+    <canvas id="sigCanvas" class="sig-pad" style="width:100%;height:200px"></canvas>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn btn-sm btn-danger" onclick="clearSig()">Clear</button>
+      <button class="btn btn-sm btn-primary" onclick="applySig()" id="applyBtn" disabled>Apply Signature</button>
+      <button class="btn btn-sm" onclick="closeSignDialog()" style="background:#eee">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let sigPad = null;
+let currentSigner = null;
+
+function openSignDialog(signer) {
+  currentSigner = signer;
+  document.getElementById('sigOverlay').classList.add('active');
+  document.getElementById('sigTitle').textContent = '✍️ Sign as ' + signer;
+  setTimeout(() => {
+    const canvas = document.getElementById('sigCanvas');
+    canvas.width = canvas.offsetWidth;
+    canvas.height = 200;
+    sigPad = new SignaturePad(canvas, { backgroundColor: 'rgba(255,255,255,0)', penColor: '#1A237E', minWidth: 1.5, maxWidth: 3.5 });
+    sigPad.addEventListener('endStroke', () => { document.getElementById('applyBtn').disabled = sigPad.isEmpty(); });
+  }, 100);
+}
+
+function closeSignDialog() {
+  document.getElementById('sigOverlay').classList.remove('active');
+  sigPad = null;
+  currentSigner = null;
+}
+
+function clearSig() {
+  if (sigPad) { sigPad.clear(); document.getElementById('applyBtn').disabled = true; }
+}
+
+async function applySig() {
+  if (!sigPad || sigPad.isEmpty()) return;
+  const dataUrl = sigPad.toDataURL('image/png');
+  const today = new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+  try {
+    const resp = await fetch('/session/{{ session.id }}/sign', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ signer: currentSigner, signature: dataUrl, date: today })
+    });
+    if (resp.ok) { location.reload(); } else { alert('Error saving signature'); }
+  } catch(e) { alert('Network error'); }
+}
+
+// Upload form
+document.getElementById('uploadForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const formData = new FormData(e.target);
+  try {
+    const resp = await fetch('/session/{{ session.id }}/upload', { method: 'POST', body: formData });
+    if (resp.ok) { location.reload(); } else { alert('Upload failed'); }
+  } catch(e) { alert('Network error'); }
+});
+
+async function completeSession() {
+  try {
+    const resp = await fetch('/session/{{ session.id }}/complete', { method: 'POST' });
+    if (resp.ok) { location.reload(); } else { alert('Error completing session'); }
+  } catch(e) { alert('Network error'); }
+}
+</script>
+</body>
+</html>

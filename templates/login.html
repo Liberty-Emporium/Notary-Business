@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login — NotaryPro</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#1A237E;--gold:#D4AF37;--bg:#f8f9fa;--card:#fff;--text:#333;--muted:#666;--border:#e0e0e0}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center}
+.login-box{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:40px;width:100%;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.08)}
+.login-box h2{text-align:center;margin-bottom:8px;color:var(--navy);font-size:1.5rem}
+.login-box p{text-align:center;color:var(--muted);margin-bottom:24px;font-size:0.9rem}
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:0.85rem;font-weight:600;margin-bottom:6px;color:var(--text)}
+.form-group input{width:100%;padding:12px 16px;border:1px solid var(--border);border-radius:8px;font-size:1rem;font-family:'Inter',sans-serif;outline:none;transition:border-color 0.2s}
+.form-group input:focus{border-color:var(--navy);box-shadow:0 0 0 3px rgba(26,35,126,0.1)}
+.btn{width:100%;padding:14px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;transition:all 0.2s;font-family:'Inter',sans-serif}
+.btn:hover{background:#283593;transform:translateY(-1px)}
+.error{background:#fee;border:1px solid #fcc;color:#c33;padding:10px 14px;border-radius:8px;margin-bottom:16px;font-size:0.85rem;text-align:center}
+.back{text-align:center;margin-top:16px}
+.back a{color:var(--muted);font-size:0.85rem}
+.back a:hover{color:var(--navy)}
+</style>
+</head>
+<body>
+<div class="login-box">
+  <h2>🏛️ NotaryPro</h2>
+  <p>Notary Dashboard Login</p>
+  {% if error %}
+  <div class="error">🔒 {{ error }}</div>
+  {% endif %}
+  <form method="POST">
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" name="password" placeholder="Enter password" autofocus>
+    </div>
+    <button type="submit" class="btn">Sign In</button>
+  </form>
+  <div class="back">
+    <a href="/">← Back to Home</a>
+  </div>
+</div>
+</body>
+</html>

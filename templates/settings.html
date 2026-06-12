@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Settings — NotaryPro</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#1A237E;--gold:#D4AF37;--bg:#f8f9fa;--card:#fff;--text:#333;--muted:#666;--green:#4CAF50;--border:#e0e0e0}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+.layout{display:flex;min-height:100vh}
+.sidebar{width:240px;background:var(--navy);color:#fff;padding:24px 0;flex-shrink:0;position:fixed;height:100vh;overflow-y:auto}
+.sidebar h2{padding:0 20px 20px;font-size:1.2rem;border-bottom:1px solid rgba(255,255,255,0.1)}
+.sidebar nav a{display:block;padding:12px 20px;color:rgba(255,255,255,0.8);font-size:0.9rem}
+.sidebar nav a:hover,.sidebar nav a.active{background:rgba(255,255,255,0.1);color:#fff;text-decoration:none}
+.sidebar nav a .icon{margin-right:8px}
+.sidebar .logout{margin-top:40px;border-top:1px solid rgba(255,255,255,0.1);padding-top:20px}
+.main{flex:1;margin-left:240px;padding:32px;max-width:700px}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
+.header h1{font-size:1.3rem;color:var(--navy)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:20px}
+.card h3{font-size:1rem;margin-bottom:16px;color:var(--navy)}
+.btn{display:inline-block;padding:10px 20px;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;border:none;font-family:'Inter',sans-serif}
+.btn-primary{background:var(--navy);color:#fff}
+.btn-success{background:var(--green);color:#fff}
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:0.85rem;font-weight:600;margin-bottom:6px}
+.form-group input{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:0.9rem;font-family:'Inter',sans-serif;outline:none}
+.form-group input:focus{border-color:var(--navy)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.flash{padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:0.9rem;background:#E8F5E9;color:#2E7D32;border:1px solid #C8E6C9}
+@media(max-width:768px){.sidebar{display:none}.main{margin-left:0;padding:16px}.form-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <h2>🏛️ NotaryPro</h2>
+  <nav>
+    <a href="/dashboard"><span class="icon">📊</span> Dashboard</a>
+    <a href="/session/new"><span class="icon">➕</span> New Session</a>
+    <a href="/journal"><span class="icon">📋</span> Journal</a>
+    <a href="/settings" class="active"><span class="icon">⚙️</span> Settings</a>
+    <div class="logout"><a href="/logout"><span class="icon">🚪</span> Logout</a></div>
+  </nav>
+</div>
+<div class="main">
+  <div class="header"><h1>⚙️ Settings</h1></div>
+  {% with messages = get_flashed_messages() %}
+    {% for msg in messages %}<div class="flash">{{ msg }}</div>{% endfor %}
+  {% endwith %}
+  <form method="POST">
+    <div class="card">
+      <h3>Notary Information</h3>
+      <div class="form-group">
+        <label>Full Legal Name (as on commission)</label>
+        <input type="text" name="name" value="{{ config.name }}" placeholder="Jane Doe">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Commission Number</label>
+          <input type="text" name="commission_number" value="{{ config.commission_number }}" placeholder="123456">
+        </div>
+        <div class="form-group">
+          <label>Commission Expiration</label>
+          <input type="text" name="commission_expires" value="{{ config.commission_expires }}" placeholder="MM/DD/YYYY">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>County</label>
+          <input type="text" name="county" value="{{ config.county }}" placeholder="Randolph">
+        </div>
+        <div class="form-group">
+          <label>State</label>
+          <input type="text" name="state" value="{{ config.state }}" placeholder="North Carolina">
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Business Information</h3>
+      <div class="form-group">
+        <label>Business Name</label>
+        <input type="text" name="business_name" value="{{ config.business_name }}" placeholder="Jane Doe Notary Services">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Business Email</label>
+          <input type="email" name="business_email" value="{{ config.business_email }}" placeholder="jane@notary.com">
+        </div>
+        <div class="form-group">
+          <label>Business Phone</label>
+          <input type="tel" name="business_phone" value="{{ config.business_phone }}" placeholder="(336) 555-1234">
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Pricing</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Fee Per Signature ($)</label>
+          <input type="number" name="fee_per_signature" value="{{ config.fee_per_signature }}" step="0.01" min="0">
+        </div>
+        <div class="form-group">
+          <label>Multi-Signature Fee ($)</label>
+          <input type="number" name="fee_multi_signature" value="{{ config.fee_multi_signature }}" step="0.01" min="0">
+        </div>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-success" style="width:100%;padding:14px;font-size:1rem">💾 Save Settings</button>
+  </form>
+</div>
+</body>
+</html>
