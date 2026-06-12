@@ -27,6 +27,7 @@ a{color:var(--navy);text-decoration:none}
 .btn-primary{background:var(--navy);color:#fff}
 .btn-success{background:var(--green);color:#fff}
 .btn-danger{background:var(--red);color:#fff}
+.btn-info{background:var(--blue);color:#fff}
 .btn-sm{padding:6px 12px;font-size:0.8rem}
 .form-group{margin-bottom:12px}
 .form-group label{display:block;font-size:0.8rem;font-weight:600;margin-bottom:4px}
@@ -49,7 +50,23 @@ a{color:var(--navy);text-decoration:none}
 table{width:100%;border-collapse:collapse;font-size:0.85rem}
 th,td{padding:8px 12px;text-align:left;border-bottom:1px solid #eee}
 th{font-weight:600;color:var(--muted);font-size:0.75rem;text-transform:uppercase}
-@media(max-width:768px){.sidebar{display:none}.main{margin-left:0;padding:16px}.form-row{grid-template-columns:1fr}}
+
+/* Video */
+.video-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.video-box{position:relative;background:#000;border-radius:8px;overflow:hidden;aspect-ratio:4/3}
+.video-box video{width:100%;height:100%;object-fit:cover}
+.video-box .label{position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,0.6);color:#fff;padding:2px 8px;border-radius:4px;font-size:0.7rem}
+.video-controls{display:flex;gap:8px;justify-content:center;margin-top:12px}
+.rec-indicator{display:none;align-items:center;gap:6px;color:var(--red);font-size:0.8rem;font-weight:600}
+.rec-indicator.active{display:flex}
+.rec-indicator .dot{width:8px;height:8px;border-radius:50%;background:var(--red);animation:blink 1s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* Link box */
+.link-box{background:#E3F2FD;border:1px solid #BBDEFB;border-radius:8px;padding:12px;font-size:0.85rem;word-break:all}
+.link-box input{width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:0.8rem;margin-top:8px}
+
+@media(max-width:768px){.sidebar{display:none}.main{margin-left:0;padding:16px}.form-row{grid-template-columns:1fr}.video-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -67,14 +84,20 @@ th{font-weight:600;color:var(--muted);font-size:0.75rem;text-transform:uppercase
 <div class="main">
   <div class="header">
     <h1>Session <code>{{ session.id[:8] }}</code> <span class="badge badge-{{ 'green' if session.status == 'completed' else 'blue' if session.status == 'ready' else 'yellow' }}">{{ session.status }}</span></h1>
-    <a href="/dashboard" class="btn btn-sm btn-primary">← Back</a>
+    <div style="display:flex;gap:8px;align-items:center">
+      <div class="rec-indicator" id="recIndicator">
+        <span class="dot"></span> Recording
+      </div>
+      <a href="/dashboard" class="btn btn-sm btn-primary">← Back</a>
+    </div>
   </div>
 
   <div class="steps">
     <div class="step {{ 'done' if session.status != 'preparing' else 'active' }}">1. Setup</div>
     <div class="step {{ 'done' if session.status in ['ready','signing','completed'] else 'active' if session.status == 'preparing' else '' }}">2. Document</div>
-    <div class="step {{ 'done' if session.status == 'completed' else 'active' if session.status == 'signing' else '' }}">3. Sign</div>
-    <div class="step {{ 'done' if session.status == 'completed' else 'active' if session.status == 'completed' else '' }}">4. Complete</div>
+    <div class="step {{ 'done' if session.document_path and session.video_recorded else 'active' if session.document_path else '' }}">3. Video</div>
+    <div class="step {{ 'done' if session.status == 'completed' else 'active' if session.signatures|length >= session.num_signatures else '' }}">4. Sign</div>
+    <div class="step {{ 'done' if session.status == 'completed' else '' }}">5. Complete</div>
   </div>
 
   <!-- Session Info -->
@@ -86,10 +109,24 @@ th{font-weight:600;color:var(--muted);font-size:0.75rem;text-transform:uppercase
       <tr><th>Document Type</th><td>{{ session.document_type or '—' }}</td></tr>
       <tr><th>Signatures</th><td>{{ session.signatures|length }} of {{ session.num_signatures }}</td></tr>
       <tr><th>ID Verified</th><td>{{ '✅ Yes' if session.id_verified else '❌ No' }}</td></tr>
+      <tr><th>Video Recorded</th><td>{{ '✅ Yes' if session.video_recorded else '❌ No' }}</td></tr>
+      <tr><th>KBA Passed</th><td>{{ '✅ Yes' if session.kba_passed else '❌ No' }}</td></tr>
       <tr><th>Document</th><td>{{ session.document_name or 'Not uploaded' }}</td></tr>
       <tr><th>Created</th><td>{{ session.created_at[:19] if session.created_at else '—' }}</td></tr>
     </table>
   </div>
+
+  <!-- Invite Signer -->
+  {% if session.status == 'preparing' %}
+  <div class="card">
+    <h3>📨 Invite Signer</h3>
+    <p style="color:var(--muted);font-size:0.85rem;margin-bottom:12px">
+      Send this link to the signer so they can join the session, verify their ID, and sign the document.
+    </p>
+    <button class="btn btn-primary" onclick="generateLink()">🔗 Generate Signer Link</button>
+    <div id="linkResult" style="margin-top:12px"></div>
+  </div>
+  {% endif %}
 
   <!-- Upload Document -->
   {% if not session.document_path %}
@@ -102,6 +139,32 @@ th{font-weight:600;color:var(--muted);font-size:0.75rem;text-transform:uppercase
       </div>
       <button type="submit" class="btn btn-primary">Upload</button>
     </form>
+  </div>
+  {% endif %}
+
+  <!-- Video Session Panel -->
+  {% if session.document_path and not session.video_recorded %}
+  <div class="card">
+    <h3>📹 Video Session</h3>
+    <p style="color:var(--muted);font-size:0.85rem;margin-bottom:16px">
+      Start a video call with the signer to verify their identity. The session will be recorded for compliance.
+    </p>
+    <div class="video-grid">
+      <div class="video-box">
+        <video id="localVideo" autoplay muted playsinline></video>
+        <div class="label">You (Notary)</div>
+      </div>
+      <div class="video-box">
+        <video id="remoteVideo" autoplay playsinline></video>
+        <div class="label">Signer</div>
+      </div>
+    </div>
+    <div class="video-controls">
+      <button class="btn btn-primary" id="btnStartCall" onclick="startCall()">📹 Start Video Call</button>
+      <button class="btn btn-sm" id="btnMute" onclick="toggleMute()" style="background:#eee">🔇 Mute</button>
+      <button class="btn btn-sm" id="btnCam" onclick="toggleCamera()" style="background:#eee">📷 Camera</button>
+      <button class="btn btn-sm btn-danger" id="btnEndCall" onclick="endCall()" style="display:none">📴 End Call</button>
+    </div>
   </div>
   {% endif %}
 
@@ -162,7 +225,7 @@ th{font-weight:600;color:var(--muted);font-size:0.75rem;text-transform:uppercase
 <div class="sig-overlay" id="sigOverlay" onclick="if(event.target===this)closeSignDialog()">
   <div class="sig-dialog">
     <h4 id="sigTitle">✍️ Sign Document</h4>
-    <canvas id="sigCanvas" class="sig-pad" style="width:100%;height:200px"></canvas>
+    <canvas id="sigCanvas" style="width:100%;height:200px;border:2px solid var(--navy);border-radius:8px;cursor:crosshair"></canvas>
     <div style="display:flex;gap:8px;margin-top:12px">
       <button class="btn btn-sm btn-danger" onclick="clearSig()">Clear</button>
       <button class="btn btn-sm btn-primary" onclick="applySig()" id="applyBtn" disabled>Apply Signature</button>
@@ -172,9 +235,179 @@ th{font-weight:600;color:var(--muted);font-size:0.75rem;text-transform:uppercase
 </div>
 
 <script>
+const SID = '{{ session.id }}';
+
+// ─── State ───
+let localStream = null;
+let remoteStream = null;
+let pc = null;
+let muted = false;
+let cameraOn = true;
 let sigPad = null;
 let currentSigner = null;
+let recording = false;
+let mediaRecorder = null;
+let recordedChunks = [];
+let lastSignalTs = '';
 
+const RTC_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ]
+};
+
+// ─── Generate Signer Link ───
+async function generateLink() {
+  try {
+    const resp = await fetch('/session/generate-link', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: `sid=${SID}`
+    });
+    const data = await resp.json();
+    document.getElementById('linkResult').innerHTML = `
+      <div class="link-box">
+        <strong>Share this link with the signer:</strong>
+        <input type="text" value="${data.link}" readonly onclick="this.select()">
+        <button class="btn btn-sm btn-primary" style="margin-top:8px" onclick="navigator.clipboard.writeText('${data.link}')">📋 Copy</button>
+      </div>
+    `;
+  } catch(e) { alert('Error generating link'); }
+}
+
+// ─── Video Call ───
+async function startCall() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    document.getElementById('localVideo').srcObject = localStream;
+
+    pc = new RTCPeerConnection(RTC_CONFIG);
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        fetch(`/session/${SID}/video/signal`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ type: 'ice-candidate', target: 'signer', data: event.candidate })
+        });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      remoteStream = event.streams[0];
+      document.getElementById('remoteVideo').srcObject = remoteStream;
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+        endCall();
+      }
+    };
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    await fetch(`/session/${SID}/video/signal`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ type: 'join', target: 'notary', data: 'notary-ready' })
+    });
+
+    await fetch(`/session/${SID}/video/signal`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ type: 'offer', target: 'signer', data: offer })
+    });
+
+    document.getElementById('btnStartCall').style.display = 'none';
+    document.getElementById('btnEndCall').style.display = '';
+
+    startRecording();
+    pollSignals();
+  } catch(e) {
+    alert('Could not access camera/microphone: ' + e.message);
+  }
+}
+
+async function pollSignals() {
+  if (!pc) return;
+  try {
+    const resp = await fetch(`/session/${SID}/video/poll?target=notary&since=${encodeURIComponent(lastSignalTs)}`);
+    const data = await resp.json();
+
+    for (const sig of data.signals) {
+      lastSignalTs = sig.ts;
+
+      if (sig.type === 'answer' && sig.target === 'notary') {
+        await pc.setRemoteDescription(new RTCSessionDescription(sig.data));
+      }
+
+      if (sig.type === 'ice-candidate' && sig.target === 'notary') {
+        try { await pc.addIceCandidate(new RTCIceCandidate(sig.data)); } catch(e) {}
+      }
+    }
+  } catch(e) {}
+
+  if (pc) setTimeout(pollSignals, 2000);
+}
+
+function endCall() {
+  stopRecording();
+  if (pc) { pc.close(); pc = null; }
+  if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+  document.getElementById('btnStartCall').style.display = '';
+  document.getElementById('btnEndCall').style.display = 'none';
+}
+
+function toggleMute() {
+  if (!localStream) return;
+  muted = !muted;
+  localStream.getAudioTracks().forEach(t => t.enabled = !muted);
+  document.getElementById('btnMute').textContent = muted ? '🔊 Unmute' : '🔇 Mute';
+}
+
+function toggleCamera() {
+  if (!localStream) return;
+  cameraOn = !cameraOn;
+  localStream.getVideoTracks().forEach(t => t.enabled = cameraOn);
+  document.getElementById('btnCam').textContent = cameraOn ? '📷 Camera' : '📷 Camera Off';
+}
+
+// ─── Recording ───
+function startRecording() {
+  if (!localStream) return;
+  recordedChunks = [];
+  const mixedStream = new MediaStream([
+    ...localStream.getVideoTracks(),
+    ...localStream.getAudioTracks()
+  ]);
+  try {
+    mediaRecorder = new MediaRecorder(mixedStream, { mimeType: 'video/webm' });
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.start(1000);
+    recording = true;
+    document.getElementById('recIndicator').classList.add('active');
+  } catch(e) { console.error('Recording failed:', e); }
+}
+
+async function stopRecording() {
+  if (!recording || !mediaRecorder) return;
+  mediaRecorder.stop();
+  recording = false;
+  document.getElementById('recIndicator').classList.remove('active');
+  await new Promise(r => setTimeout(r, 1000));
+  if (recordedChunks.length === 0) return;
+  const blob = new Blob(recordedChunks, { type: 'video/webm' });
+  const formData = new FormData();
+  formData.append('video', blob, `${SID}_recording.webm`);
+  try {
+    await fetch(`/session/${SID}/video/recording`, { method: 'POST', body: formData });
+  } catch(e) {}
+}
+
+// ─── Signature ───
 function openSignDialog(signer) {
   currentSigner = signer;
   document.getElementById('sigOverlay').classList.add('active');

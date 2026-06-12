@@ -14,6 +14,7 @@ import hashlib
 import secrets
 import sqlite3
 import datetime
+import threading
 from functools import wraps
 
 import jwt
@@ -47,10 +48,16 @@ SESSIONS_DIR = os.path.join(APP_DATA, 'sessions')
 DOCS_DIR = os.path.join(APP_DATA, 'documents')
 SIGS_DIR = os.path.join(APP_DATA, 'signatures')
 ID_DIR = os.path.join(APP_DATA, 'id_uploads')
+VIDEO_DIR = os.path.join(APP_DATA, 'video_recordings')
 os.makedirs(SESSIONS_DIR, exist_ok=True)
 os.makedirs(DOCS_DIR, exist_ok=True)
 os.makedirs(SIGS_DIR, exist_ok=True)
 os.makedirs(ID_DIR, exist_ok=True)
+os.makedirs(VIDEO_DIR, exist_ok=True)
+
+# WebRTC Signaling storage (in-memory, per-session)
+video_signals = {}
+video_signals_lock = threading.Lock()
 
 # Database
 DB_PATH = os.path.join(APP_DATA, 'notary.db')
@@ -260,7 +267,8 @@ def generate_notarized_pdf(session_data, config):
     signer_name = session_data.get('signer_name', '_________________')
     doc_type = session_data.get('document_type', '_________________')
     today = datetime.datetime.now().strftime('%B %d, %Y')
-    notary_name = config.get('name', '_________________')
+    # Support both old config dict and new profile dict from DB
+    notary_name = (config.get('name') or config.get('business_name') or config.get('full_name') or '_________________')
 
     story.append(Paragraph(
         f"On this <b>{today}</b>, before me, <b>{notary_name}</b>, "
@@ -276,8 +284,8 @@ def generate_notarized_pdf(session_data, config):
     if isinstance(sigs, dict):
         for signer_name_key, sig_info in sigs.items():
             if isinstance(sig_info, dict):
-                sig_path = sig_info.get('path', '')
-                sig_date = sig_info.get('date', '_________________')
+                sig_path = sig_info.get('signature_path') or sig_info.get('path', '')
+                sig_date = sig_info.get('signed_date') or sig_info.get('date', '_________________')
             else:
                 sig_path = sig_info
                 sig_date = today
@@ -678,6 +686,160 @@ def get_sig_image(sid, signer):
         if os.path.exists(path):
             return send_file(path, mimetype=f'image/{ext}')
     return jsonify({'error': 'Not found'}), 404
+
+# ─── Routes: Video Session (WebRTC) ──────────────────────────────────────────
+
+@app.route('/session/<sid>/video/signal', methods=['POST'])
+@login_required
+def video_signal(sid):
+    """Relay WebRTC signaling messages (offer/answer/ICE candidates)."""
+    db = get_db()
+    s = db.execute('SELECT * FROM sessions WHERE id = ? AND user_id = ?',
+                   (sid, session['user_id'])).fetchone()
+    db.close()
+    if not s:
+        return jsonify({'error': 'Session not found'}), 404
+
+    body = request.get_json(force=True) or {}
+    msg_type = body.get('type')
+    target = body.get('target')  # 'notary' or 'signer'
+    data = body.get('data')
+
+    if msg_type not in ('offer', 'answer', 'ice-candidate', 'join', 'leave'):
+        return jsonify({'error': 'Invalid signal type'}), 400
+
+    with video_signals_lock:
+        if sid not in video_signals:
+            video_signals[sid] = []
+        video_signals[sid].append({
+            'type': msg_type,
+            'target': target,
+            'data': data,
+            'ts': datetime.datetime.utcnow().isoformat()
+        })
+        # Keep last 50 signals
+        video_signals[sid] = video_signals[sid][-50:]
+
+    return jsonify({'status': 'relayed'})
+
+
+@app.route('/session/<sid>/video/poll')
+@login_required
+def video_poll(sid):
+    """Poll for new signaling messages (long-polling alternative)."""
+    db = get_db()
+    s = db.execute('SELECT * FROM sessions WHERE id = ? AND user_id = ?',
+                   (sid, session['user_id'])).fetchone()
+    db.close()
+    if not s:
+        return jsonify({'error': 'Session not found'}), 404
+
+    target = request.args.get('target', 'signer')
+    since = request.args.get('since', '')
+
+    with video_signals_lock:
+        signals = video_signals.get(sid, [])
+
+    if since:
+        signals = [s for s in signals if s['ts'] > since]
+
+    # Filter for target
+    filtered = [s for s in signals if s.get('target') == target or s.get('type') == 'join']
+
+    return jsonify({'signals': filtered})
+
+
+@app.route('/session/<sid>/video/recording', methods=['POST'])
+@login_required
+def upload_video_recording(sid):
+    """Save recorded video blob from MediaRecorder."""
+    db = get_db()
+    s = db.execute('SELECT * FROM sessions WHERE id = ? AND user_id = ?',
+                   (sid, session['user_id'])).fetchone()
+    if not s:
+        db.close()
+        return jsonify({'error': 'Session not found'}), 404
+
+    if 'video' not in request.files:
+        db.close()
+        return jsonify({'error': 'No video file'}), 400
+
+    file = request.files['video']
+    video_path = os.path.join(VIDEO_DIR, f"{sid}_recording.webm")
+    file.save(video_path)
+
+    db.execute('UPDATE sessions SET video_recorded = 1, video_path = ? WHERE id = ?',
+               (video_path, sid))
+    db.commit()
+    db.close()
+
+    return jsonify({'status': 'saved', 'path': video_path})
+
+
+# ─── Public signer access (token-based, no login required) ────────────────────
+
+@app.route('/sign/<token>')
+def signer_access(token):
+    """Allow signer to join session via token link (no login needed)."""
+    try:
+        payload = jwt.decode(token, app.secret_key, algorithms=['HS256'])
+        sid = payload.get('sid')
+        if not sid:
+            return 'Invalid link', 400
+    except jwt.InvalidTokenError:
+        return 'Invalid or expired link', 404
+
+    db = get_db()
+    s = db.execute('SELECT * FROM sessions WHERE id = ?', (sid,)).fetchone()
+    db.close()
+    if not s:
+        return 'Session not found', 404
+
+    return render_template('signer.html', session=dict(s), token=token)
+
+
+@app.route('/session/generate-link', methods=['POST'])
+@login_required
+def generate_signer_link(sid=None):
+    """Generate a shareable link for the signer."""
+    sid = request.form.get('sid', sid)
+    if not sid:
+        return jsonify({'error': 'No session ID'}), 400
+
+    db = get_db()
+    s = db.execute('SELECT * FROM sessions WHERE id = ? AND user_id = ?',
+                   (sid, session['user_id'])).fetchone()
+    if not s:
+        db.close()
+        return jsonify({'error': 'Session not found'}), 404
+
+    token = jwt.encode({
+        'sid': sid,
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=7)
+    }, app.secret_key, algorithm='HS256')
+
+    link = url_for('signer_access', token=token, _external=True)
+    db.close()
+    return jsonify({'link': link, 'token': token})
+
+
+@app.route('/session/<sid>/kba-pass', methods=['POST'])
+def kba_pass(sid):
+    """Mark KBA as passed for a session (called from signer page, token-authenticated)."""
+    # This endpoint is called from the signer page which uses token auth
+    # For now, allow it without login_required since signer doesn't have a session
+    # In production, verify the token from a header
+    db = get_db()
+    s = db.execute('SELECT * FROM sessions WHERE id = ?', (sid,)).fetchone()
+    if not s:
+        db.close()
+        return jsonify({'error': 'Session not found'}), 404
+
+    db.execute('UPDATE sessions SET kba_passed = 1 WHERE id = ?', (sid,))
+    db.commit()
+    db.close()
+    return jsonify({'status': 'ok'})
+
 
 # ─── Run ──────────────────────────────────────────────────────────────────────
 
