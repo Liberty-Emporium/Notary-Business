@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NotaryPro — Remote Online Notary Platform
+Easy Notary — Remote Online Notary Platform
 NC RON (Remote Online Notarization) Compliant
 Single-tenant: one app instance per notary
 """
@@ -31,9 +31,19 @@ from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
 
 # ─── App Config ─────────────────────────────────────────────────────────────
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+app.secret_key = os.environ.get('SECRET_KEY', 'easy-notary-dev-key-change-in-production-2026')
 app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(days=30)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
+
+# Fix for HTTPS/Proxy (Railway) — ensure session cookies work behind HTTPS
+app.config['SESSION_COOKIE_SECURE'] = False  # Allow HTTP for local dev
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PREFERRED_URL_SCHEME'] = 'https'
+
+# Trust Railway's proxy headers
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 # Stripe
 stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', '')
@@ -81,7 +91,7 @@ def init_db():
             is_admin INTEGER DEFAULT 0
         );
 
-        CREATE TABLE IF NOT EXISTS notary_profile (
+        CREATE TABLE IF NOT EXISTS easy_notaryfile (
             id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
             commission_number TEXT,
@@ -203,16 +213,16 @@ def get_profile():
     if not session.get('user_id'):
         return None
     db = get_db()
-    p = db.execute('SELECT * FROM notary_profile WHERE user_id = ?', (session['user_id'],)).fetchone()
+    p = db.execute('SELECT * FROM easy_notaryfile WHERE user_id = ?', (session['user_id'],)).fetchone()
     db.close()
     if not p:
         # Create default profile
         pid = str(uuid.uuid4())[:12]
         db = get_db()
-        db.execute('INSERT INTO notary_profile (id, user_id, state) VALUES (?, ?, ?)',
+        db.execute('INSERT INTO easy_notaryfile (id, user_id, state) VALUES (?, ?, ?)',
                    (pid, session['user_id'], 'North Carolina'))
         db.commit()
-        p = db.execute('SELECT * FROM notary_profile WHERE id = ?', (pid,)).fetchone()
+        p = db.execute('SELECT * FROM easy_notaryfile WHERE id = ?', (pid,)).fetchone()
         db.close()
     return dict(p) if p else {}
 
@@ -382,7 +392,7 @@ def register():
 
         session['user_id'] = uid
         session.permanent = True
-        flash('Account created! Welcome to NotaryPro.', 'success')
+        flash('Account created! Welcome to Easy Notary.', 'success')
         return redirect(url_for('settings'))
 
     return render_template('login.html', mode='register')
@@ -626,19 +636,19 @@ def settings():
                   'fee_multi_signature','fee_loan_package','fee_travel','max_signers',
                   'stripe_account_id','payment_model','platform_commission']
 
-        existing = db.execute('SELECT * FROM notary_profile WHERE user_id = ?', (user['id'],)).fetchone()
+        existing = db.execute('SELECT * FROM easy_notaryfile WHERE user_id = ?', (user['id'],)).fetchone()
         now = datetime.datetime.utcnow().isoformat()
 
         if existing:
             set_clause = ', '.join([f'{f} = ?' for f in fields]) + ', updated_at = ?'
             values = [request.form.get(f, '') for f in fields] + [now, user['id']]
-            db.execute(f'UPDATE notary_profile SET {set_clause} WHERE user_id = ?', values)
+            db.execute(f'UPDATE easy_notaryfile SET {set_clause} WHERE user_id = ?', values)
         else:
             pid = str(uuid.uuid4())[:12]
             cols = ['id','user_id'] + fields + ['updated_at']
             placeholders = ','.join(['?' for _ in cols])
             values = [pid, user['id']] + [request.form.get(f, '') for f in fields] + [now]
-            db.execute(f'INSERT INTO notary_profile ({",".join(cols)}) VALUES ({placeholders})', values)
+            db.execute(f'INSERT INTO easy_notaryfile ({",".join(cols)}) VALUES ({placeholders})', values)
 
         # Update user name
         if request.form.get('full_name'):
