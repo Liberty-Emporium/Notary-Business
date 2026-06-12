@@ -357,6 +357,12 @@ def index():
         return redirect(url_for('dashboard'))
     return render_template('index.html', profile=profile)
 
+
+@app.route('/health')
+def health():
+    """Health check endpoint for Railway."""
+    return jsonify({'status': 'ok', 'app': 'Easy Notary'}), 200
+
 # ─── Routes: Auth ────────────────────────────────────────────────────────────
 
 @app.route('/register', methods=['GET', 'POST'])
