@@ -25,7 +25,8 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.lib.colors import HexColor, white, black
 from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
-                                  TableStyle, HRFlowable, PageBreak, Image as RLImage)
+                                  TableStyle, HRFlowable, PageBreak)
+from PIL import Image as PILImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
 
@@ -271,33 +272,46 @@ def generate_notarized_pdf(session_data, config):
     GOLD = HexColor('#D4AF37')
     story = []
 
+    # Pre-build styles (reportlab 5.x: fontName must be in ParagraphStyle, not Paragraph)
+    style_nc = ParagraphStyle('NC', parent=styles['Title'], fontSize=16, textColor=NAVY,
+                              alignment=TA_CENTER, fontName='Helvetica-Bold')
+    style_s1 = ParagraphStyle('S1', parent=styles['Normal'], fontSize=11, textColor=black,
+                              fontName='Helvetica')
+    style_s2 = ParagraphStyle('S2', parent=styles['Normal'], fontSize=11, textColor=black,
+                              fontName='Helvetica')
+    style_s3 = ParagraphStyle('S3', parent=styles['Normal'], fontSize=10, textColor=black,
+                              alignment=TA_JUSTIFY, leading=14, fontName='Helvetica')
+    style_sl = ParagraphStyle('SL', parent=styles['Normal'], fontSize=8,
+                              textColor=HexColor('#666'), fontName='Helvetica')
+    style_sd = ParagraphStyle('SD', parent=styles['Normal'], fontSize=8,
+                              textColor=HexColor('#666'), fontName='Helvetica')
+    style_se = ParagraphStyle('SE', parent=styles['Normal'], fontSize=9, textColor=black,
+                              alignment=TA_CENTER, fontName='Helvetica')
+
     # Notary Certificate Page
     story.append(Spacer(1, 0.5*inch))
-    story.append(Paragraph("NOTARY ACKNOWLEDGMENT",
-        ParagraphStyle('NC', parent=styles['Title'], fontSize=16, textColor=NAVY,
-                       alignment=TA_CENTER, fontName='Helvetica-Bold')))
+    story.append(Paragraph("NOTARY ACKNOWLEDGMENT", style_nc))
     story.append(HRFlowable(width="60%", thickness=1, color=GOLD, spaceAfter=16, spaceBefore=6))
 
-    story.append(Paragraph(f"State of {config.get('state', 'North Carolina')}",
-        ParagraphStyle('S1', parent=styles['Normal'], fontSize=11, textColor=black, fontName='Helvetica')))
-    story.append(Paragraph(f"County of {config.get('county', '_______________')}",
-        ParagraphStyle('S2', parent=styles['Normal'], fontSize=11, textColor=black, fontName='Helvetica')))
+    state = config.get('state', 'North Carolina')
+    county = config.get('county', '_______________')
+    story.append(Paragraph(f"State of {state}", style_s1))
+    story.append(Paragraph(f"County of {county}", style_s2))
     story.append(Spacer(1, 0.2*inch))
 
     signer_name = session_data.get('signer_name', '_________________')
     doc_type = session_data.get('document_type', '_________________')
     today = datetime.datetime.now().strftime('%B %d, %Y')
-    # Support both old config dict and new profile dict from DB
     notary_name = (config.get('name') or config.get('business_name') or config.get('full_name') or '_________________')
 
-    story.append(Paragraph(
+    cert_text = (
         f"On this <b>{today}</b>, before me, <b>{notary_name}</b>, "
         f"Notary Public for said State, personally appeared <b>{signer_name}</b>, "
         f"known to me (or proved to me on the basis of satisfactory evidence) to be the person "
         f"whose name is subscribed to the within instrument and acknowledged to me that they "
-        f"executed the same in their authorized capacity.",
-        ParagraphStyle('S3', parent=styles['Normal'], fontSize=10, textColor=black,
-                       alignment=TA_JUSTIFY, leading=14, fontName='Helvetica')))
+        f"executed the same in their authorized capacity."
+    )
+    story.append(Paragraph(cert_text, style_s3))
     story.append(Spacer(1, 0.3*inch))
 
     # Signature lines
@@ -310,25 +324,30 @@ def generate_notarized_pdf(session_data, config):
                 sig_path = sig_info
                 sig_date = today
             if sig_path and os.path.exists(sig_path):
-                story.append(RLImage(sig_path, width=2.5*inch, height=0.6*inch, kind='proportional'))
-            story.append(Paragraph(f"Signature: {signer_name_key}",
-                ParagraphStyle('SL', parent=styles['Normal'], fontSize=8, textColor=HexColor('#666'), fontName='Helvetica')))
-            story.append(Paragraph(f"Date: {sig_date}",
-                ParagraphStyle('SD', parent=styles['Normal'], fontSize=8, textColor=HexColor('#666'), fontName='Helvetica')))
-            story.append(Spacer(1, 0.15*inch))
+                sig_valid = False
+                try:
+                    with PILImage.open(sig_path) as img:
+                        img.verify()
+                    sig_valid = True
+                except Exception:
+                    sig_valid = False
+                story.append(Spacer(1, 0.1*inch))
+                sig_label = signer_name_key if sig_valid else f"{signer_name_key} (image unavailable)"
+                story.append(Paragraph(f"Signature: {sig_label}", style_sl))
+                story.append(Paragraph(f"Date: {sig_date}", style_sd))
+                story.append(Spacer(1, 0.15*inch))
 
     story.append(Spacer(1, 0.3*inch))
     story.append(HRFlowable(width="100%", thickness=0.5, color=HexColor('#ccc'), spaceBefore=10, spaceAfter=10))
 
     # Notary seal
-    seal_data = [[
-        Paragraph(f"<b>{notary_name}</b><br/>"
-                  f"Commission #{config.get('commission_number', '________')}<br/>"
-                  f"Expires: {config.get('commission_expires', '________')}<br/>"
-                  f"{config.get('county', '_______')} County, {config.get('state', 'NC')}",
-            ParagraphStyle('SE', parent=styles['Normal'], fontSize=9, textColor=black,
-                           alignment=TA_CENTER, fontName='Helvetica')),
-    ]]
+    seal_text = (
+        f"<b>{notary_name}</b><br/>"
+        f"Commission #{config.get('commission_number', '________')}<br/>"
+        f"Expires: {config.get('commission_expires', '________')}<br/>"
+        f"{config.get('county', '_______')} County, {config.get('state', 'NC')}"
+    )
+    seal_data = [[Paragraph(seal_text, style_se)]]
     seal_table = Table(seal_data, colWidths=[3*inch])
     seal_table.setStyle(TableStyle([
         ('BOX', (0, 0), (-1, -1), 1.5, NAVY),
@@ -339,7 +358,11 @@ def generate_notarized_pdf(session_data, config):
     ]))
     story.append(seal_table)
 
-    doc.build(story)
+    try:
+        doc.build(story)
+    except Exception as e:
+        print(f"[PDF] Error building notarized PDF: {e}")
+        return None
 
     # Merge with original PDF
     try:
@@ -355,6 +378,8 @@ def generate_notarized_pdf(session_data, config):
             writer.write(f)
     except ImportError:
         pass
+    except Exception as e:
+        print(f"[PDF] Error merging PDFs: {e}")
 
     return output_path
 
